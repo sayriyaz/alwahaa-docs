@@ -1,12 +1,9 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import { requireAuthenticatedAppUser } from '@/lib/auth'
 import { getDailyWorks } from '@/lib/daily-works'
 import { selectAllInvoiceTasks, type InvoiceTaskRecord } from '@/lib/invoice-tasks'
 import { getClientNameMap, getInvoices } from '@/lib/invoices'
-import DashboardAccountControls from '@/components/dashboard-account-controls'
 import DashboardTeamLoadCard from '@/components/dashboard-team-load-card'
-import alWahaaLogo from '@/Picture/alwahaa grp.png'
 
 type InvoiceReceiptSummary = {
   id: string
@@ -100,29 +97,6 @@ function getTaskStatusClasses(status: string | null) {
 
 function isOpenTask(status: string | null) {
   return (status ?? 'Pending') !== 'Done'
-}
-
-function NavItem({
-  href,
-  label,
-  active = false,
-}: {
-  href: string
-  label: string
-  active?: boolean
-}) {
-  return (
-    <Link
-      href={href}
-      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-        active
-          ? 'bg-slate-900 text-white shadow-[0_14px_30px_rgba(15,23,42,0.14)]'
-          : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
-      }`}
-    >
-      {label}
-    </Link>
-  )
 }
 
 function OverviewCard({
@@ -287,48 +261,7 @@ export default async function Home() {
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)]">
       <div className="mx-auto max-w-[1400px] px-4 py-5 lg:px-6 lg:py-6">
         <div className="rounded-[34px] border border-white/80 bg-white/70 p-4 shadow-[0_30px_80px_rgba(15,23,42,0.08)] backdrop-blur lg:p-6">
-          <header className="relative overflow-visible rounded-[28px] border border-slate-200 bg-white px-4 py-4 shadow-[0_14px_40px_rgba(15,23,42,0.05)] lg:px-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <Link href="/" className="flex items-center gap-3">
-                  <div className="rounded-[22px] border border-slate-200 bg-white p-2 shadow-sm">
-                    <Image
-                      src={alWahaaLogo}
-                      alt="Al Wahaa Group logo"
-                      width={78}
-                      height={78}
-                      style={{ width: '52px', height: 'auto' }}
-                      priority
-                      unoptimized
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[0.7rem] uppercase tracking-[0.28em] text-amber-700">Al Wahaa Group</p>
-                    <p className="text-xl font-semibold tracking-tight text-slate-900">Dashboard</p>
-                  </div>
-                </Link>
-
-                <nav className="mt-4 flex flex-wrap items-center gap-2">
-                  <NavItem href="/" label="Home" active />
-                  <NavItem href="/invoices" label="Invoice" />
-                  <NavItem href="/clients" label="Client" />
-                  {appUser.role === 'admin' ? <NavItem href="/attendance" label="Attendance" /> : null}
-                  {appUser.role === 'admin' ? <NavItem href="/users" label="User" /> : null}
-                </nav>
-              </div>
-
-              <div className="shrink-0 self-end lg:self-start">
-                <DashboardAccountControls
-                  attendanceStatusCode={null}
-                  email={appUser.email}
-                  fullName={appUser.full_name}
-                  role={appUser.role}
-                />
-              </div>
-            </div>
-          </header>
-
-          <main className="mt-6 space-y-6">
+          <main className="space-y-6">
             <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <OverviewCard
                 title="Daily Works"
