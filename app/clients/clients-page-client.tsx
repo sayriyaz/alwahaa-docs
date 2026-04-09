@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import AppBrandLink from '@/components/app-brand-link'
 
 type Client = {
   id: string
@@ -110,19 +109,12 @@ export default function ClientsPageClient({
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b px-6 py-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <AppBrandLink compact />
-            <div className="hidden h-10 w-px bg-gray-200 md:block" />
-            <Link href={returnTo || '/'} className="text-gray-400 hover:text-gray-600 text-sm">
-              {returnTo ? 'Back' : 'Dashboard'}
-            </Link>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Clients</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">Clients</h1>
+            <p className="text-sm text-slate-500">
               {clients.length} clients total
               {canManage ? '' : ' · View only access'}
             </p>
-          </div>
           </div>
           {canManage ? (
             <button

@@ -1,7 +1,6 @@
 'use client'
 
 import { startTransition, useEffect, useState, type ReactNode } from 'react'
-import AppBrandLink from '@/components/app-brand-link'
 import type {
   AttendanceStatusCode,
   AttendanceTrackedStaff,
@@ -457,8 +456,6 @@ export default function AttendancePageClient({
             <Surface className="px-4 py-4 lg:px-5">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 items-center gap-4">
-                  <AppBrandLink compact subtitle="Attendance" />
-                  <div className="hidden h-10 w-px bg-slate-200 xl:block" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900">Attendance</p>
                     <p className="text-xs text-slate-500">

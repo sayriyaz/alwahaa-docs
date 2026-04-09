@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { startTransition, useState } from 'react'
-import AppBrandLink from '@/components/app-brand-link'
 import type { DailyWorkItem } from '@/lib/daily-works'
 
 type ApiPayload = {
@@ -321,15 +320,8 @@ export default function DailyWorksPageClient({
       <div className="print-root min-h-screen bg-[radial-gradient(circle_at_top,#f8fbff_0%,#eef3fb_40%,#e5edf9_100%)]">
       <div className="print-shell mx-auto max-w-[1480px] px-3 py-4 lg:px-5 lg:py-5">
         <div className="no-print mb-4 flex flex-col gap-3 rounded-[26px] border border-white/80 bg-white/75 px-4 py-4 shadow-[0_26px_70px_rgba(15,23,42,0.08)] backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-4">
-            <AppBrandLink compact />
-            <div className="hidden h-10 w-px bg-slate-200 md:block" />
-            <div>
-              <Link href="/" className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400 hover:text-slate-600">
-                Dashboard
-              </Link>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Daily Works</h1>
-            </div>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">Daily Works</h1>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
