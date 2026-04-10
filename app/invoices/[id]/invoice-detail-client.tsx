@@ -1604,7 +1604,7 @@ export default function InvoiceDetailClient({
                     <td className="px-4 py-2 text-gray-500">{currentTask.dept || '—'}</td>
                     <td className="px-4 py-2">{currentTask.particulars || '—'}</td>
                     <td className="px-4 py-2 text-gray-500">{currentTask.assigned_to || '—'}</td>
-                    <td className="px-4 py-2 text-gray-500">{currentTask.task_date || '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{currentTask.task_date || currentTask.created_at?.slice(0, 10) || '—'}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(currentTask.charged)}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(currentTask.paid)}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency((currentTask.charged ?? 0) - (currentTask.paid ?? 0))}</td>
