@@ -711,6 +711,25 @@ export default function InvoiceDetailClient({
     )
   }
 
+  async function deleteTask(taskId: string) {
+    if (!permissions.canDeleteServiceOrders) return
+    if (!confirm('Delete this task? This cannot be undone.')) return
+
+    setPageError('')
+
+    const { error } = await supabase
+      .from('invoice_tasks')
+      .delete()
+      .eq('id', taskId)
+
+    if (error) {
+      setPageError(formatSupabaseError(error, 'Unable to delete the task right now.'))
+      return
+    }
+
+    setTasks((currentTasks) => currentTasks.filter((t) => t.id !== taskId))
+  }
+
   const totalReceived = receipts.reduce((sum, currentReceipt) => sum + (currentReceipt.amount ?? 0), 0)
   const totalVendorPaid = tasks.reduce((sum, currentTask) => sum + (currentTask.paid ?? 0), 0)
   const totalVendorCharged = tasks.reduce((sum, currentTask) => sum + (currentTask.charged ?? 0), 0)
@@ -1554,15 +1573,26 @@ export default function InvoiceDetailClient({
                       )}
                     </td>
                     <td className="px-4 py-2 text-right">
-                      {permissions.canManageTasks ? (
-                        <button
-                          type="button"
-                          onClick={() => startTaskEdit(currentTask)}
-                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                        >
-                          Edit
-                        </button>
-                      ) : null}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {permissions.canManageTasks ? (
+                          <button
+                            type="button"
+                            onClick={() => startTaskEdit(currentTask)}
+                            className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+                        {permissions.canDeleteServiceOrders ? (
+                          <button
+                            type="button"
+                            onClick={() => void deleteTask(currentTask.id)}
+                            className="rounded border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
