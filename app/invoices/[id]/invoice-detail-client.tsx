@@ -5,7 +5,7 @@ import { useState, type FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calculateInvoiceTotalAmount, calculateServiceSubtotal, calculateVatAmount } from '@/lib/invoice-calculations'
 import type { AppPermissions } from '@/lib/auth-constants'
-import { saveInvoiceTask, syncInvoiceTasksFromServiceOrders } from '@/lib/invoice-tasks'
+import { saveInvoiceTask } from '@/lib/invoice-tasks'
 import { selectServiceOrders, syncServiceOrders } from '@/lib/service-orders'
 import type { AssignableUser } from '@/lib/app-users'
 
@@ -427,22 +427,6 @@ export default function InvoiceDetailClient({
       description: currentLine.description,
       amount: currentLine.amount,
     }))
-    const linkedServiceOrders = nextServiceOrders.flatMap((currentLine) =>
-      typeof currentLine.id === 'string'
-        ? [{
-            id: currentLine.id,
-            invoice_id: currentLine.invoice_id ?? invoice.id,
-            description: currentLine.description,
-            amount: currentLine.amount,
-          }]
-        : []
-    )
-    const taskSyncResult = await syncInvoiceTasksFromServiceOrders(
-      invoice.id,
-      linkedServiceOrders,
-      supabase
-    )
-
     if (permissions.canEditInvoiceDetails) {
       const payload = {
         client_id: invoiceForm.client_id,
@@ -467,9 +451,6 @@ export default function InvoiceDetailClient({
 
       if (error || !data) {
         setServiceOrders(nextServiceOrders)
-        if (taskSyncResult.data) {
-          setTasks(sortTasks(taskSyncResult.data as InvoiceTask[]))
-        }
         setPageError(formatSupabaseError(error, 'Service order lines may have been updated, but the invoice totals could not be saved. Please try again.'))
         return
       }
@@ -485,15 +466,8 @@ export default function InvoiceDetailClient({
     }
 
     setServiceOrders(nextServiceOrders)
-    if (taskSyncResult.data) {
-      setTasks(sortTasks(taskSyncResult.data as InvoiceTask[]))
-    }
     setServiceOrderFormLines(buildServiceOrderFormLines(nextServiceOrders))
     setShowInvoiceForm(false)
-
-    if (taskSyncResult.error) {
-      setPageError(formatSupabaseError(taskSyncResult.error, 'Invoice saved, but tasks could not be synced automatically.'))
-    }
   }
 
   async function updateInvoiceStatus(status: string) {
@@ -735,58 +709,6 @@ export default function InvoiceDetailClient({
         currentTask.id === taskId ? { ...currentTask, status } : currentTask
       )
     )
-  }
-
-  const [taskSyncing, setTaskSyncing] = useState(false)
-
-  async function syncTasksFromServiceOrders() {
-    if (!permissions.canManageTasks) return
-    setTaskSyncing(true)
-    setPageError('')
-
-    try {
-      const existingParticulars = new Set(
-        tasks.map((t) => (t.particulars ?? '').trim().toLowerCase())
-      )
-      const newTasks: InvoiceTask[] = []
-
-      for (const so of serviceOrders) {
-        const key = so.description.trim().toLowerCase()
-        if (existingParticulars.has(key)) continue
-
-        const { data, error } = await supabase
-          .from('invoice_tasks')
-          .insert({
-            invoice_id: invoice.id,
-            particulars: so.description,
-            charged: so.amount ?? 0,
-            paid: 0,
-            status: 'Pending',
-          })
-          .select('id, invoice_id, service_order_id, dept, particulars, assigned_to, charged, paid, payment_mode, ref_no, status, notes, task_date, created_at')
-          .single()
-
-        if (error || !data) {
-          setPageError(formatSupabaseError(error, `Unable to create task for: ${so.description}`))
-          setTaskSyncing(false)
-          return
-        }
-
-        newTasks.push(data as unknown as InvoiceTask)
-        existingParticulars.add(key)
-      }
-
-      if (newTasks.length > 0) {
-        setTasks(sortTasks([...tasks, ...newTasks]))
-      } else {
-        setPageError('All service orders already have tasks.')
-        setTimeout(() => setPageError(''), 3000)
-      }
-    } catch {
-      setPageError('Unable to sync tasks from service orders.')
-    } finally {
-      setTaskSyncing(false)
-    }
   }
 
   const totalReceived = receipts.reduce((sum, currentReceipt) => sum + (currentReceipt.amount ?? 0), 0)
@@ -1365,28 +1287,15 @@ export default function InvoiceDetailClient({
 
         <div className="bg-white rounded-xl border overflow-hidden">
           <div className="px-4 py-3 border-b flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold text-gray-700">Tasks</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Auto-created from service orders · Edit to fill date, paid & mode</p>
-            </div>
+            <h2 className="font-semibold text-gray-700">Tasks</h2>
             {permissions.canManageTasks ? (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void syncTasksFromServiceOrders()}
-                  disabled={taskSyncing}
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {taskSyncing ? 'Syncing...' : '↻ Sync Tasks'}
-                </button>
-                <button
-                  type="button"
-                  onClick={openNewTaskForm}
-                  className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                >
-                  + Add Task
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={openNewTaskForm}
+                className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
+              >
+                + Add Task
+              </button>
             ) : null}
           </div>
 
@@ -1479,12 +1388,32 @@ export default function InvoiceDetailClient({
                         </div>
                         <div className="md:col-span-2">
                           <label className="text-xs text-gray-500">Particulars *</label>
-                          <input
+                          <select
                             className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                            placeholder="e.g. Work Permit payment"
                             value={task.particulars}
-                            onChange={(event) => setTask({ ...task, particulars: event.target.value })}
-                          />
+                            onChange={(event) => {
+                              const selected = serviceOrders.find((so) => so.description === event.target.value)
+                              setTask({
+                                ...task,
+                                particulars: event.target.value,
+                                charged: selected ? (selected.amount ?? 0).toString() : task.charged,
+                              })
+                            }}
+                          >
+                            <option value="">Select service order</option>
+                            {serviceOrders.map((so, i) => (
+                              <option key={i} value={so.description}>{so.description}</option>
+                            ))}
+                            <option value="__other__">Other (type below)</option>
+                          </select>
+                          {task.particulars === '__other__' || (task.particulars && !serviceOrders.find((so) => so.description === task.particulars)) ? (
+                            <input
+                              className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                              placeholder="Describe the task"
+                              value={task.particulars === '__other__' ? '' : task.particulars}
+                              onChange={(event) => setTask({ ...task, particulars: event.target.value })}
+                            />
+                          ) : null}
                         </div>
                         <div>
                           <label className="text-xs text-gray-500">Assigned To</label>

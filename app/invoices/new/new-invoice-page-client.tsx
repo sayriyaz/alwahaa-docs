@@ -1,11 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { insertServiceOrders } from '@/lib/service-orders'
-import AppBrandLink from '@/components/app-brand-link'
 import type { AssignableUser } from '@/lib/app-users'
 
 const DEFAULT_SERVICES = [
@@ -231,14 +229,9 @@ export default function NewInvoicePageClient({
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b px-6 py-4">
-        <div className="flex items-center gap-4">
-          <AppBrandLink compact />
-          <div className="hidden h-10 w-px bg-gray-200 md:block" />
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">Dashboard</Link>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">New Invoice</h1>
-            <p className="text-sm text-gray-500">Create a new service invoice</p>
-          </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">New Invoice</h1>
+          <p className="text-sm text-gray-500">Create a new service invoice</p>
         </div>
       </div>
 
