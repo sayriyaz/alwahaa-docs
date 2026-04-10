@@ -5,9 +5,8 @@ import { useState, type FormEvent } from 'react'
 import { supabase } from '@/lib/supabase'
 import { calculateInvoiceTotalAmount, calculateServiceSubtotal, calculateVatAmount } from '@/lib/invoice-calculations'
 import type { AppPermissions } from '@/lib/auth-constants'
-import { saveInvoiceTask } from '@/lib/invoice-tasks'
+import { saveInvoiceTask, syncInvoiceTasksFromServiceOrders } from '@/lib/invoice-tasks'
 import { selectServiceOrders, syncServiceOrders } from '@/lib/service-orders'
-import AppBrandLink from '@/components/app-brand-link'
 import type { AssignableUser } from '@/lib/app-users'
 
 export type Invoice = {
@@ -44,6 +43,7 @@ export type ServiceOrder = {
 export type InvoiceTask = {
   id: string
   invoice_id: string
+  service_order_id: string | null
   dept: string | null
   particulars: string | null
   assigned_to: string | null
@@ -234,7 +234,7 @@ function buildTaskForm(currentTask: InvoiceTask): TaskForm {
     dept: currentTask.dept ?? '',
     particulars: currentTask.particulars ?? '',
     assigned_to: currentTask.assigned_to ?? '',
-    task_date: currentTask.task_date ?? currentTask.created_at?.slice(0, 10) ?? getTodayDateValue(),
+    task_date: currentTask.task_date ?? '',
     charged: currentTask.charged?.toString() ?? '',
     paid: currentTask.paid?.toString() ?? '',
     payment_mode: currentTask.payment_mode ?? '',
@@ -427,6 +427,21 @@ export default function InvoiceDetailClient({
       description: currentLine.description,
       amount: currentLine.amount,
     }))
+    const linkedServiceOrders = nextServiceOrders.flatMap((currentLine) =>
+      typeof currentLine.id === 'string'
+        ? [{
+            id: currentLine.id,
+            invoice_id: currentLine.invoice_id ?? invoice.id,
+            description: currentLine.description,
+            amount: currentLine.amount,
+          }]
+        : []
+    )
+    const taskSyncResult = await syncInvoiceTasksFromServiceOrders(
+      invoice.id,
+      linkedServiceOrders,
+      supabase
+    )
 
     if (permissions.canEditInvoiceDetails) {
       const payload = {
@@ -451,6 +466,10 @@ export default function InvoiceDetailClient({
       setInvoiceSaving(false)
 
       if (error || !data) {
+        setServiceOrders(nextServiceOrders)
+        if (taskSyncResult.data) {
+          setTasks(sortTasks(taskSyncResult.data as InvoiceTask[]))
+        }
         setPageError(formatSupabaseError(error, 'Service order lines may have been updated, but the invoice totals could not be saved. Please try again.'))
         return
       }
@@ -466,8 +485,15 @@ export default function InvoiceDetailClient({
     }
 
     setServiceOrders(nextServiceOrders)
+    if (taskSyncResult.data) {
+      setTasks(sortTasks(taskSyncResult.data as InvoiceTask[]))
+    }
     setServiceOrderFormLines(buildServiceOrderFormLines(nextServiceOrders))
     setShowInvoiceForm(false)
+
+    if (taskSyncResult.error) {
+      setPageError(formatSupabaseError(taskSyncResult.error, 'Invoice saved, but tasks could not be synced automatically.'))
+    }
   }
 
   async function updateInvoiceStatus(status: string) {
@@ -490,37 +516,30 @@ export default function InvoiceDetailClient({
     setInvoice((currentInvoice) => ({ ...currentInvoice, status }))
   }
 
-  function handleDeptChange(dept: string) {
-    if (!permissions.canManageTasks) {
-      return
-    }
-
-    setTask((currentTask) => ({
-      ...currentTask,
-      dept,
-      payment_mode: DEPT_PAYMENT_MODE[dept] || currentTask.payment_mode,
-    }))
-  }
-
-  function openNewTaskForm() {
-    setEditingTaskId(null)
-    setTask({
-      ...EMPTY_TASK,
-      task_date: getTodayDateValue(),
-    })
-    setShowTaskForm(true)
-  }
-
   function cancelTaskForm() {
     setEditingTaskId(null)
     setTask(EMPTY_TASK)
     setShowTaskForm(false)
   }
 
+  function openNewTaskForm() {
+    setEditingTaskId(null)
+    setTask(EMPTY_TASK)
+    setShowTaskForm(true)
+  }
+
   function startTaskEdit(currentTask: InvoiceTask) {
     setEditingTaskId(currentTask.id)
     setTask(buildTaskForm(currentTask))
     setShowTaskForm(true)
+  }
+
+  function handleDeptChange(value: string) {
+    setTask((currentTask) => ({
+      ...currentTask,
+      dept: value,
+      payment_mode: currentTask.payment_mode || DEPT_PAYMENT_MODE[value] || '',
+    }))
   }
 
   function openNewReceiptForm(overrides?: Partial<ReceiptForm>) {
@@ -550,27 +569,43 @@ export default function InvoiceDetailClient({
       return
     }
 
-    if (!task.dept || !task.particulars.trim() || !task.task_date) {
-      alert('Department, particulars, and task date are required.')
-      return
-    }
-
     setTaskSaving(true)
     setPageError('')
 
     try {
+      const currentTask = editingTaskId
+        ? tasks.find((currentTaskRow) => currentTaskRow.id === editingTaskId)
+        : null
+
+      if (editingTaskId && !currentTask) {
+        setPageError('Unable to find the selected task right now.')
+        return
+      }
+
+      const particulars = currentTask?.service_order_id
+        ? task.particulars.trim()
+        : task.particulars.trim()
+      const charged = currentTask?.service_order_id
+        ? (parseFloat(task.charged) || 0)
+        : (parseFloat(task.charged) || 0)
+
+      if (!particulars) {
+        alert('Task particulars are required.')
+        return
+      }
+
       const taskPayload = {
         invoice_id: invoice.id,
+        service_order_id: currentTask?.service_order_id ?? null,
         dept: task.dept,
-        particulars: task.particulars.trim(),
+        particulars,
         assigned_to: task.assigned_to || null,
         task_date: task.task_date || null,
-        charged: parseFloat(task.charged) || 0,
+        charged,
         paid: parseFloat(task.paid) || 0,
         payment_mode: task.payment_mode || null,
         ref_no: task.ref_no || null,
         notes: task.notes || null,
-        ...(editingTaskId ? {} : { status: 'Pending' }),
       }
 
       const { data, error } = await saveInvoiceTask(taskPayload, supabase, editingTaskId)
@@ -583,7 +618,7 @@ export default function InvoiceDetailClient({
       setTasks((currentTasks) =>
         sortTasks(
           editingTaskId
-            ? currentTasks.map((currentTask) => currentTask.id === editingTaskId ? (data as InvoiceTask) : currentTask)
+            ? currentTasks.map((currentTaskRow) => currentTaskRow.id === editingTaskId ? (data as InvoiceTask) : currentTaskRow)
             : [...currentTasks, data as InvoiceTask]
         )
       )
@@ -732,17 +767,15 @@ export default function InvoiceDetailClient({
       <div className="bg-white border-b px-6 py-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-4">
-            <AppBrandLink compact />
-            <div className="hidden h-10 w-px bg-gray-200 md:block" />
-            <Link href="/invoices" className="text-gray-400 hover:text-gray-600 text-sm">Invoices</Link>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Invoice {invoice.invoice_no}</h1>
-            <p className="text-sm text-gray-500">
-              {currentClient?.name ?? 'Unknown client'}
-              {invoice.beneficiary_name ? ` · ${invoice.beneficiary_name}` : ''}
-              {!accessNotice ? '' : ` · ${roleLabel} access`}
-            </p>
-          </div>
+            <Link href="/invoices" className="text-gray-400 hover:text-gray-600 text-sm">← Back to invoices</Link>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Invoice {invoice.invoice_no}</h1>
+              <p className="text-sm text-gray-500">
+                {currentClient?.name ?? 'Unknown client'}
+                {invoice.beneficiary_name ? ` · ${invoice.beneficiary_name}` : ''}
+                {!accessNotice ? '' : ` · ${roleLabel} access`}
+              </p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {canOpenInvoiceEditor ? (
@@ -1280,142 +1313,207 @@ export default function InvoiceDetailClient({
 
         <div className="bg-white rounded-xl border overflow-hidden">
           <div className="px-4 py-3 border-b flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700">Tasks / Vendor Payments</h2>
+            <h2 className="font-semibold text-gray-700">Tasks</h2>
             {permissions.canManageTasks ? (
               <button
+                type="button"
                 onClick={openNewTaskForm}
-                className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-blue-700"
+                className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
               >
-                {showTaskForm ? '+ New Task' : '+ Add Task'}
+                + Add Task
               </button>
             ) : null}
           </div>
 
           {showTaskForm ? (
             <form className="border-b bg-blue-50 p-4 space-y-3" onSubmit={handleTaskSubmit}>
-              <div>
-                <p className="text-sm font-semibold text-gray-700">
-                  {editingTaskId ? 'Edit Task' : 'Add Task'}
-                </p>
-              </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div>
-                  <label className="text-xs text-gray-500">Department *</label>
-                  <select
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    value={task.dept}
-                    onChange={(event) => handleDeptChange(event.target.value)}
-                  >
-                    <option value="">Select department</option>
-                    {DEPARTMENTS.map((department) => (
-                      <option key={department} value={department}>{department}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Particulars *</label>
-                  <input
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    placeholder="e.g. Job Offer"
-                    value={task.particulars}
-                    onChange={(event) => setTask({ ...task, particulars: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Assigned To</label>
-                  <select
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    value={task.assigned_to}
-                    onChange={(event) => setTask({ ...task, assigned_to: event.target.value })}
-                  >
-                    <option value="">Select staff</option>
-                    {assignableUsers.map((staffMember) => (
-                      <option key={staffMember.id} value={staffMember.label}>{staffMember.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Task Date *</label>
-                  <input
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    type="date"
-                    value={task.task_date}
-                    onChange={(event) => setTask({ ...task, task_date: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Charged (AED)</label>
-                  <input
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    type="number"
-                    placeholder="0"
-                    value={task.charged}
-                    onChange={(event) => setTask({ ...task, charged: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Paid (AED)</label>
-                  <input
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    type="number"
-                    placeholder="0"
-                    value={task.paid}
-                    onChange={(event) => setTask({ ...task, paid: event.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Payment Mode</label>
-                  <select
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    value={task.payment_mode}
-                    onChange={(event) => setTask({ ...task, payment_mode: event.target.value })}
-                  >
-                    <option value="">Select mode</option>
-                    {VENDOR_PAYMENT_MODES.map((paymentMode) => (
-                      <option key={paymentMode} value={paymentMode}>{paymentMode}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Ref No</label>
-                  <input
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    placeholder="e.g. TXN123"
-                    value={task.ref_no}
-                    onChange={(event) => setTask({ ...task, ref_no: event.target.value })}
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-xs text-gray-500">Notes</label>
-                  <input
-                    className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                    placeholder="Optional"
-                    value={task.notes}
-                    onChange={(event) => setTask({ ...task, notes: event.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={taskSaving}
-                  className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {taskSaving ? 'Saving...' : editingTaskId ? 'Save Changes' : 'Save Task'}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelTaskForm}
-                  className="text-gray-500 px-4 py-1.5 rounded-lg text-sm hover:bg-gray-100"
-                >
-                  Cancel
-                </button>
-              </div>
+              {(() => {
+                const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null
+                const isAutoTask = Boolean(editingTask?.service_order_id)
+
+                return (
+                  <>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-700">
+                        {editingTaskId ? 'Update Task' : 'Add Task'}
+                      </p>
+                      {isAutoTask ? (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {editingTask?.particulars} · {formatCurrency(editingTask?.charged ?? null)}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    {isAutoTask ? (
+                      /* Simplified form for auto-generated tasks — just the 4 fields you need */
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        <div>
+                          <label className="text-xs text-gray-500">Date</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            type="date"
+                            value={task.task_date}
+                            onChange={(event) => setTask({ ...task, task_date: event.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Assigned To</label>
+                          <select
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.assigned_to}
+                            onChange={(event) => setTask({ ...task, assigned_to: event.target.value })}
+                          >
+                            <option value="">Select staff</option>
+                            {assignableUsers.map((staffMember) => (
+                              <option key={staffMember.id} value={staffMember.label}>{staffMember.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Paid (AED)</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            type="number"
+                            placeholder="0.00"
+                            value={task.paid}
+                            onChange={(event) => setTask({ ...task, paid: event.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Payment Mode</label>
+                          <select
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.payment_mode}
+                            onChange={(event) => setTask({ ...task, payment_mode: event.target.value })}
+                          >
+                            <option value="">Select mode</option>
+                            {VENDOR_PAYMENT_MODES.map((paymentMode) => (
+                              <option key={paymentMode} value={paymentMode}>{paymentMode}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Full form for manual tasks added via + Add Task */
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div>
+                          <label className="text-xs text-gray-500">Department</label>
+                          <select
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.dept}
+                            onChange={(event) => handleDeptChange(event.target.value)}
+                          >
+                            <option value="">Select dept</option>
+                            {DEPARTMENTS.map((dept) => (
+                              <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs text-gray-500">Particulars *</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            placeholder="e.g. Work Permit payment"
+                            value={task.particulars}
+                            onChange={(event) => setTask({ ...task, particulars: event.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Assigned To</label>
+                          <select
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.assigned_to}
+                            onChange={(event) => setTask({ ...task, assigned_to: event.target.value })}
+                          >
+                            <option value="">Select staff</option>
+                            {assignableUsers.map((staffMember) => (
+                              <option key={staffMember.id} value={staffMember.label}>{staffMember.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Date</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            type="date"
+                            value={task.task_date}
+                            onChange={(event) => setTask({ ...task, task_date: event.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Charged (AED)</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            type="number"
+                            value={task.charged}
+                            onChange={(event) => setTask({ ...task, charged: event.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Paid (AED)</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            type="number"
+                            value={task.paid}
+                            onChange={(event) => setTask({ ...task, paid: event.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Payment Mode</label>
+                          <select
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.payment_mode}
+                            onChange={(event) => setTask({ ...task, payment_mode: event.target.value })}
+                          >
+                            <option value="">Select mode</option>
+                            {VENDOR_PAYMENT_MODES.map((paymentMode) => (
+                              <option key={paymentMode} value={paymentMode}>{paymentMode}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-gray-500">Payment Ref</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.ref_no}
+                            onChange={(event) => setTask({ ...task, ref_no: event.target.value })}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="text-xs text-gray-500">Notes</label>
+                          <input
+                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
+                            value={task.notes}
+                            onChange={(event) => setTask({ ...task, notes: event.target.value })}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={taskSaving}
+                        className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {taskSaving ? 'Saving...' : 'Save Task'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelTaskForm}
+                        className="text-gray-500 px-4 py-1.5 rounded-lg text-sm hover:bg-gray-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                )
+              })()}
             </form>
           ) : null}
 
           {tasks.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 text-sm">No tasks yet. Click Add Task to track vendor payments.</div>
+            <div className="p-8 text-center text-gray-400 text-sm">No tasks yet. Tasks are created automatically from service orders, and you can add manual tasks when needed.</div>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
@@ -1433,59 +1531,51 @@ export default function InvoiceDetailClient({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {tasks.map((currentTask) => {
-                  const difference = (currentTask.charged ?? 0) - (currentTask.paid ?? 0)
-
-                  return (
-                    <tr key={currentTask.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium">{currentTask.dept || '—'}</td>
-                      <td className="px-4 py-2">{currentTask.particulars || '—'}</td>
-                      <td className="px-4 py-2 text-gray-500">{currentTask.assigned_to || '—'}</td>
-                      <td className="px-4 py-2 text-gray-500">{currentTask.task_date || currentTask.created_at?.slice(0, 10) || '—'}</td>
-                      <td className="px-4 py-2 text-right">{formatCurrency(currentTask.charged)}</td>
-                      <td className="px-4 py-2 text-right">{formatCurrency(currentTask.paid)}</td>
-                      <td className={`px-4 py-2 text-right font-medium ${difference > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                        {formatCurrency(difference)}
-                      </td>
-                      <td className="px-4 py-2 text-gray-500 text-xs">{currentTask.payment_mode || '—'}</td>
-                      <td className="px-4 py-2">
-                        {permissions.canManageTasks ? (
-                          <select
-                            className="text-xs border rounded px-1.5 py-1 cursor-pointer"
-                            value={currentTask.status || 'Pending'}
-                            onChange={(event) => void updateTaskStatus(currentTask.id, event.target.value)}
-                          >
-                            {TASK_STATUSES.map((status) => (
-                              <option key={status} value={status}>{status}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="text-xs text-gray-600">{currentTask.status || 'Pending'}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        {permissions.canManageTasks ? (
-                          <button
-                            type="button"
-                            onClick={() => startTaskEdit(currentTask)}
-                            className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
-                          >
-                            Edit
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  )
-                })}
+                {tasks.map((currentTask) => (
+                  <tr key={currentTask.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-gray-500">{currentTask.dept || '—'}</td>
+                    <td className="px-4 py-2">{currentTask.particulars || '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{currentTask.assigned_to || '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{currentTask.task_date || '—'}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(currentTask.charged)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency(currentTask.paid)}</td>
+                    <td className="px-4 py-2 text-right">{formatCurrency((currentTask.charged ?? 0) - (currentTask.paid ?? 0))}</td>
+                    <td className="px-4 py-2 text-gray-500">{currentTask.payment_mode || '—'}</td>
+                    <td className="px-4 py-2">
+                      {permissions.canManageTasks ? (
+                        <select
+                          className="text-xs border rounded px-1.5 py-1 cursor-pointer"
+                          value={currentTask.status || 'Pending'}
+                          onChange={(event) => void updateTaskStatus(currentTask.id, event.target.value)}
+                        >
+                          {TASK_STATUSES.map((status) => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-gray-600">{currentTask.status || 'Pending'}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {permissions.canManageTasks ? (
+                        <button
+                          type="button"
+                          onClick={() => startTaskEdit(currentTask)}
+                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 font-semibold text-sm">
                 <tr>
                   <td colSpan={4} className="px-4 py-2">Total</td>
                   <td className="px-4 py-2 text-right">{formatCurrency(totalVendorCharged)}</td>
                   <td className="px-4 py-2 text-right">{formatCurrency(totalVendorPaid)}</td>
-                  <td className={`px-4 py-2 text-right ${vendorOutstanding > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                    {formatCurrency(vendorOutstanding)}
-                  </td>
+                  <td className="px-4 py-2 text-right">{formatCurrency(vendorOutstanding)}</td>
                   <td colSpan={3} />
                 </tr>
               </tfoot>
