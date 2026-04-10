@@ -743,19 +743,49 @@ export default function InvoiceDetailClient({
     if (!permissions.canManageTasks) return
     setTaskSyncing(true)
     setPageError('')
-    const linkedServiceOrders = serviceOrders.flatMap((so) =>
-      typeof so.id === 'string'
-        ? [{ id: so.id, invoice_id: invoice.id, description: so.description, amount: so.amount }]
-        : []
-    )
-    const result = await syncInvoiceTasksFromServiceOrders(invoice.id, linkedServiceOrders, supabase)
-    setTaskSyncing(false)
-    if (result.error) {
-      setPageError(formatSupabaseError(result.error, 'Unable to sync tasks from service orders.'))
-      return
-    }
-    if (result.data) {
-      setTasks(sortTasks(result.data as InvoiceTask[]))
+
+    try {
+      const existingParticulars = new Set(
+        tasks.map((t) => (t.particulars ?? '').trim().toLowerCase())
+      )
+      const newTasks: InvoiceTask[] = []
+
+      for (const so of serviceOrders) {
+        const key = so.description.trim().toLowerCase()
+        if (existingParticulars.has(key)) continue
+
+        const { data, error } = await supabase
+          .from('invoice_tasks')
+          .insert({
+            invoice_id: invoice.id,
+            particulars: so.description,
+            charged: so.amount ?? 0,
+            paid: 0,
+            status: 'Pending',
+          })
+          .select('id, invoice_id, service_order_id, dept, particulars, assigned_to, charged, paid, payment_mode, ref_no, status, notes, task_date, created_at')
+          .single()
+
+        if (error || !data) {
+          setPageError(formatSupabaseError(error, `Unable to create task for: ${so.description}`))
+          setTaskSyncing(false)
+          return
+        }
+
+        newTasks.push(data as unknown as InvoiceTask)
+        existingParticulars.add(key)
+      }
+
+      if (newTasks.length > 0) {
+        setTasks(sortTasks([...tasks, ...newTasks]))
+      } else {
+        setPageError('All service orders already have tasks.')
+        setTimeout(() => setPageError(''), 3000)
+      }
+    } catch {
+      setPageError('Unable to sync tasks from service orders.')
+    } finally {
+      setTaskSyncing(false)
     }
   }
 
@@ -1364,7 +1394,10 @@ export default function InvoiceDetailClient({
             <form className="border-b bg-blue-50 p-4 space-y-3" onSubmit={handleTaskSubmit}>
               {(() => {
                 const editingTask = editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null
-                const isAutoTask = Boolean(editingTask?.service_order_id)
+                const serviceOrderDescriptions = new Set(serviceOrders.map((so) => so.description.trim().toLowerCase()))
+                const isAutoTask = editingTask
+                  ? Boolean(editingTask.service_order_id) || serviceOrderDescriptions.has((editingTask.particulars ?? '').trim().toLowerCase())
+                  : false
 
                 return (
                   <>
