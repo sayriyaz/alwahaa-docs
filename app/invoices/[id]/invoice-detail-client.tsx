@@ -737,6 +737,28 @@ export default function InvoiceDetailClient({
     )
   }
 
+  const [taskSyncing, setTaskSyncing] = useState(false)
+
+  async function syncTasksFromServiceOrders() {
+    if (!permissions.canManageTasks) return
+    setTaskSyncing(true)
+    setPageError('')
+    const linkedServiceOrders = serviceOrders.flatMap((so) =>
+      typeof so.id === 'string'
+        ? [{ id: so.id, invoice_id: invoice.id, description: so.description, amount: so.amount }]
+        : []
+    )
+    const result = await syncInvoiceTasksFromServiceOrders(invoice.id, linkedServiceOrders, supabase)
+    setTaskSyncing(false)
+    if (result.error) {
+      setPageError(formatSupabaseError(result.error, 'Unable to sync tasks from service orders.'))
+      return
+    }
+    if (result.data) {
+      setTasks(sortTasks(result.data as InvoiceTask[]))
+    }
+  }
+
   const totalReceived = receipts.reduce((sum, currentReceipt) => sum + (currentReceipt.amount ?? 0), 0)
   const totalVendorPaid = tasks.reduce((sum, currentTask) => sum + (currentTask.paid ?? 0), 0)
   const totalVendorCharged = tasks.reduce((sum, currentTask) => sum + (currentTask.charged ?? 0), 0)
@@ -1313,15 +1335,28 @@ export default function InvoiceDetailClient({
 
         <div className="bg-white rounded-xl border overflow-hidden">
           <div className="px-4 py-3 border-b flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700">Tasks</h2>
+            <div>
+              <h2 className="font-semibold text-gray-700">Tasks</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Auto-created from service orders · Edit to fill date, paid & mode</p>
+            </div>
             {permissions.canManageTasks ? (
-              <button
-                type="button"
-                onClick={openNewTaskForm}
-                className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
-              >
-                + Add Task
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void syncTasksFromServiceOrders()}
+                  disabled={taskSyncing}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {taskSyncing ? 'Syncing...' : '↻ Sync Tasks'}
+                </button>
+                <button
+                  type="button"
+                  onClick={openNewTaskForm}
+                  className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                >
+                  + Add Task
+                </button>
+              </div>
             ) : null}
           </div>
 
