@@ -104,10 +104,17 @@ function normalizeTaskRecord(task: Omit<DailyTaskRecord, 'task_date'> & { task_d
 }
 
 async function selectDailyTaskRows(dateValue: string, queryClient: QueryClient) {
+  const startDateTime = `${dateValue}T00:00:00Z`
+  const endDateTime = `${getNextDateValue(dateValue)}T00:00:00Z`
+
+  // Match tasks where task_date is explicitly set to this date,
+  // OR where task_date is null and created_at falls on this day (legacy/old tasks).
   const primaryResult = await queryClient
     .from('invoice_tasks')
     .select(DAILY_TASK_SELECT)
-    .eq('task_date', dateValue)
+    .or(
+      `task_date.eq.${dateValue},and(task_date.is.null,created_at.gte.${startDateTime},created_at.lt.${endDateTime})`
+    )
     .order('assigned_to', { ascending: true })
     .order('created_at', { ascending: true })
 
@@ -118,9 +125,7 @@ async function selectDailyTaskRows(dateValue: string, queryClient: QueryClient) 
     }
   }
 
-  const startDateTime = `${dateValue}T00:00:00Z`
-  const endDateTime = `${getNextDateValue(dateValue)}T00:00:00Z`
-
+  // Fallback for databases that don't have the task_date column yet.
   const legacyResult = await queryClient
     .from('invoice_tasks')
     .select(LEGACY_DAILY_TASK_SELECT)
