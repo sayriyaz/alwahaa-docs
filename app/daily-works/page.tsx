@@ -2,6 +2,8 @@ import { getDailyWorks, normalizeDailyWorksDate } from '@/lib/daily-works'
 import { requireAuthenticatedAppUser } from '@/lib/auth'
 import DailyWorksPageClient from './daily-works-page-client'
 
+export const dynamic = 'force-dynamic'
+
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>
 
 function getSearchParam(value: string | string[] | undefined) {
