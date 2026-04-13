@@ -562,6 +562,7 @@ export default function InvoiceDetailClient({
       const charged = currentTask?.service_order_id
         ? (parseFloat(task.charged) || 0)
         : (parseFloat(task.charged) || 0)
+      const resolvedTaskDate = task.task_date || currentTask?.task_date || getTodayDateValue()
 
       if (!particulars) {
         alert('Task particulars are required.')
@@ -574,7 +575,7 @@ export default function InvoiceDetailClient({
         dept: task.dept,
         particulars,
         assigned_to: task.assigned_to || null,
-        task_date: task.task_date || null,
+        task_date: resolvedTaskDate,
         charged,
         paid: parseFloat(task.paid) || 0,
         payment_mode: task.payment_mode || null,

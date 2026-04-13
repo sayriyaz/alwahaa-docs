@@ -107,37 +107,57 @@ async function selectDailyTaskRows(dateValue: string, queryClient: QueryClient) 
   const startDateTime = `${dateValue}T00:00:00Z`
   const endDateTime = `${getNextDateValue(dateValue)}T00:00:00Z`
 
-  // Match tasks where task_date is explicitly set to this date,
-  // OR where task_date is null and created_at falls on this day (legacy/old tasks).
-  const primaryResult = await queryClient
+  // Query 1: tasks with an explicit task_date set to this day.
+  const byDateResult = await queryClient
     .from('invoice_tasks')
     .select(DAILY_TASK_SELECT)
-    .or(
-      `task_date.eq.${dateValue},and(task_date.is.null,created_at.gte.${startDateTime},created_at.lt.${endDateTime})`
-    )
+    .eq('task_date', dateValue)
     .order('assigned_to', { ascending: true })
     .order('created_at', { ascending: true })
 
-  if (!primaryResult.error || !isMissingTaskDateColumn(primaryResult.error)) {
-    return {
-      ...primaryResult,
-      data: ((primaryResult.data ?? []) as DailyTaskRecord[]).map(normalizeTaskRecord),
+  if (byDateResult.error) {
+    if (isMissingTaskDateColumn(byDateResult.error)) {
+      // task_date column doesn't exist — fall back to created_at only.
+      const legacyResult = await queryClient
+        .from('invoice_tasks')
+        .select(LEGACY_DAILY_TASK_SELECT)
+        .gte('created_at', startDateTime)
+        .lt('created_at', endDateTime)
+        .order('assigned_to', { ascending: true })
+        .order('created_at', { ascending: true })
+
+      return {
+        ...legacyResult,
+        data: ((legacyResult.data ?? []) as Array<Omit<DailyTaskRecord, 'task_date'>>).map(normalizeTaskRecord),
+      }
     }
+    return { ...byDateResult, data: [] as DailyTaskRecord[] }
   }
 
-  // Fallback for databases that don't have the task_date column yet.
-  const legacyResult = await queryClient
+  // Query 2: tasks with no task_date (legacy rows) whose created_at falls on this day.
+  const byCreatedAtResult = await queryClient
     .from('invoice_tasks')
-    .select(LEGACY_DAILY_TASK_SELECT)
+    .select(DAILY_TASK_SELECT)
+    .is('task_date', null)
     .gte('created_at', startDateTime)
     .lt('created_at', endDateTime)
     .order('assigned_to', { ascending: true })
     .order('created_at', { ascending: true })
 
-  return {
-    ...legacyResult,
-    data: ((legacyResult.data ?? []) as Array<Omit<DailyTaskRecord, 'task_date'>>).map(normalizeTaskRecord),
+  const byDate = ((byDateResult.data ?? []) as DailyTaskRecord[]).map(normalizeTaskRecord)
+  const byCreatedAt = ((byCreatedAtResult.data ?? []) as DailyTaskRecord[]).map(normalizeTaskRecord)
+
+  // Merge, deduplicate by id.
+  const seen = new Set<string>()
+  const merged: DailyTaskRecord[] = []
+  for (const row of [...byDate, ...byCreatedAt]) {
+    if (!seen.has(row.id)) {
+      seen.add(row.id)
+      merged.push(row)
+    }
   }
+
+  return { data: merged, error: null }
 }
 
 export async function getDailyWorks(
