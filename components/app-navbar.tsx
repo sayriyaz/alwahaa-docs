@@ -132,7 +132,7 @@ export default function AppNavbar() {
           </div>
           <div className="hidden sm:block">
             <p className="text-[0.6rem] uppercase tracking-[0.26em] text-amber-700 leading-none">Al Wahaa Group</p>
-            <p className="text-sm font-semibold tracking-tight text-slate-900 leading-tight">Alwahaa Ops</p>
+            <p className="text-sm font-semibold tracking-tight text-slate-900 leading-tight">Alwahaa Documents</p>
           </div>
         </Link>
 

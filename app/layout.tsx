@@ -5,7 +5,7 @@ import AuthSessionSync from '@/components/auth-session-sync'
 import { ToastProvider } from '@/components/ui/toast'
 
 export const metadata: Metadata = {
-  title: 'Alwahaa Ops',
+  title: 'Alwahaa Documents',
   description: 'Alwahaa Documents Clearing and Business Consultant.',
 }
 

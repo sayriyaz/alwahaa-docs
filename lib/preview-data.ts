@@ -160,6 +160,7 @@ export const previewTasks = {
     {
       id: 'task-001',
       invoice_id: 'inv-preview-001',
+      service_order_id: null,
       dept: 'MOHRE',
       particulars: 'Job offer approval',
       assigned_to: 'Shahul Hameed',
@@ -175,6 +176,7 @@ export const previewTasks = {
     {
       id: 'task-002',
       invoice_id: 'inv-preview-001',
+      service_order_id: null,
       dept: 'MEDICAL',
       particulars: 'Medical and Emirates ID',
       assigned_to: 'Faseela K',
@@ -190,6 +192,7 @@ export const previewTasks = {
     {
       id: 'task-003',
       invoice_id: 'inv-preview-001',
+      service_order_id: null,
       dept: 'GDRFA',
       particulars: 'Visa stamping',
       assigned_to: 'Shahul Hameed',
@@ -207,6 +210,7 @@ export const previewTasks = {
     {
       id: 'task-004',
       invoice_id: 'inv-preview-002',
+      service_order_id: null,
       dept: 'ILOE',
       particulars: 'Insurance enrollment',
       assigned_to: 'Faseela K',
@@ -222,6 +226,7 @@ export const previewTasks = {
     {
       id: 'task-005',
       invoice_id: 'inv-preview-002',
+      service_order_id: null,
       dept: 'ICP',
       particulars: 'Visa inside process',
       assigned_to: 'Riyaz Ur Rahman',
@@ -239,6 +244,7 @@ export const previewTasks = {
     {
       id: 'task-006',
       invoice_id: 'inv-preview-003',
+      service_order_id: null,
       dept: 'DET',
       particulars: 'License renewal filing',
       assigned_to: 'Riyaz Ur Rahman',
