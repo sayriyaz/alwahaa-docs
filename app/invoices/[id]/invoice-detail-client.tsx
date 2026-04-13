@@ -53,7 +53,6 @@ export type InvoiceTask = {
   ref_no: string | null
   status: string | null
   notes: string | null
-  task_date: string | null
   created_at: string | null
 }
 
@@ -192,11 +191,9 @@ function sortReceipts(receipts: InvoiceReceipt[]) {
 }
 
 function sortTasks(tasks: InvoiceTask[]) {
-  return [...tasks].sort((left, right) => {
-    const leftValue = left.task_date ?? left.created_at ?? ''
-    const rightValue = right.task_date ?? right.created_at ?? ''
-    return leftValue.localeCompare(rightValue)
-  })
+  return [...tasks].sort((left, right) =>
+    (left.created_at ?? '').localeCompare(right.created_at ?? '')
+  )
 }
 
 function getTodayDateValue() {
@@ -234,7 +231,7 @@ function buildTaskForm(currentTask: InvoiceTask): TaskForm {
     dept: currentTask.dept ?? '',
     particulars: currentTask.particulars ?? '',
     assigned_to: currentTask.assigned_to ?? '',
-    task_date: currentTask.task_date ?? '',
+    task_date: currentTask.created_at?.slice(0, 10) ?? '',
     charged: currentTask.charged?.toString() ?? '',
     paid: currentTask.paid?.toString() ?? '',
     payment_mode: currentTask.payment_mode ?? '',
@@ -562,12 +559,15 @@ export default function InvoiceDetailClient({
       const charged = currentTask?.service_order_id
         ? (parseFloat(task.charged) || 0)
         : (parseFloat(task.charged) || 0)
-      const resolvedTaskDate = task.task_date || currentTask?.task_date || getTodayDateValue()
-
       if (!particulars) {
         alert('Task particulars are required.')
         return
       }
+
+      // Convert the date input (YYYY-MM-DD) to a full ISO timestamp for created_at.
+      // Only include created_at if the user explicitly set a date.
+      const dateInput = task.task_date || currentTask?.created_at?.slice(0, 10) || null
+      const resolvedCreatedAt = dateInput ? `${dateInput}T00:00:00.000Z` : null
 
       const taskPayload = {
         invoice_id: invoice.id,
@@ -575,7 +575,7 @@ export default function InvoiceDetailClient({
         dept: task.dept,
         particulars,
         assigned_to: task.assigned_to || null,
-        task_date: resolvedTaskDate,
+        ...(resolvedCreatedAt ? { created_at: resolvedCreatedAt } : {}),
         charged,
         paid: parseFloat(task.paid) || 0,
         payment_mode: task.payment_mode || null,
@@ -1553,7 +1553,7 @@ export default function InvoiceDetailClient({
                     <td className="px-4 py-2 text-gray-500">{currentTask.dept || '—'}</td>
                     <td className="px-4 py-2">{currentTask.particulars || '—'}</td>
                     <td className="px-4 py-2 text-gray-500">{currentTask.assigned_to || '—'}</td>
-                    <td className="px-4 py-2 text-gray-500">{currentTask.task_date || currentTask.created_at?.slice(0, 10) || '—'}</td>
+                    <td className="px-4 py-2 text-gray-500">{currentTask.created_at?.slice(0, 10) || '—'}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(currentTask.charged)}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency(currentTask.paid)}</td>
                     <td className="px-4 py-2 text-right">{formatCurrency((currentTask.charged ?? 0) - (currentTask.paid ?? 0))}</td>

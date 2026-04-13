@@ -15,7 +15,6 @@ type DailyTaskRecord = {
   ref_no: string | null
   status: string | null
   notes: string | null
-  task_date?: string | null
   created_at: string | null
 }
 
@@ -31,13 +30,6 @@ type InvoiceLookupRecord = {
 type ClientLookupRecord = {
   id: string
   name: string
-}
-
-type SupabaseErrorLike = {
-  code?: string | null
-  message?: string | null
-  details?: string | null
-  hint?: string | null
 }
 
 export type DailyWorkItem = {
@@ -63,8 +55,6 @@ export type DailyWorkItem = {
 }
 
 const DAILY_TASK_SELECT =
-  'id, invoice_id, dept, particulars, assigned_to, charged, paid, payment_mode, ref_no, status, notes, task_date, created_at'
-const LEGACY_DAILY_TASK_SELECT =
   'id, invoice_id, dept, particulars, assigned_to, charged, paid, payment_mode, ref_no, status, notes, created_at'
 
 function getTodayDateValue() {
@@ -77,7 +67,6 @@ export function normalizeDailyWorksDate(value: string | null | undefined) {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return getTodayDateValue()
   }
-
   return value
 }
 
@@ -87,101 +76,29 @@ function getNextDateValue(dateValue: string) {
   return nextDate.toISOString().slice(0, 10)
 }
 
-function isMissingTaskDateColumn(error: SupabaseErrorLike | null) {
-  if (!error) {
-    return false
-  }
-
-  const message = [error.message, error.details, error.hint].filter(Boolean).join(' ').toLowerCase()
-  return error.code === 'PGRST204' || error.code === '42703' || message.includes('task_date')
-}
-
-function normalizeTaskRecord(task: Omit<DailyTaskRecord, 'task_date'> & { task_date?: string | null }): DailyTaskRecord {
-  return {
-    ...task,
-    task_date: task.task_date ?? null,
-  }
-}
-
-async function selectDailyTaskRows(dateValue: string, queryClient: QueryClient) {
-  const startDateTime = `${dateValue}T00:00:00Z`
-  const endDateTime = `${getNextDateValue(dateValue)}T00:00:00Z`
-
-  // Query 1: tasks with an explicit task_date set to this day.
-  const byDateResult = await queryClient
-    .from('invoice_tasks')
-    .select(DAILY_TASK_SELECT)
-    .eq('task_date', dateValue)
-    .order('assigned_to', { ascending: true })
-    .order('created_at', { ascending: true })
-
-  if (byDateResult.error) {
-    if (isMissingTaskDateColumn(byDateResult.error)) {
-      // task_date column doesn't exist — fall back to created_at only.
-      const legacyResult = await queryClient
-        .from('invoice_tasks')
-        .select(LEGACY_DAILY_TASK_SELECT)
-        .gte('created_at', startDateTime)
-        .lt('created_at', endDateTime)
-        .order('assigned_to', { ascending: true })
-        .order('created_at', { ascending: true })
-
-      return {
-        ...legacyResult,
-        data: ((legacyResult.data ?? []) as Array<Omit<DailyTaskRecord, 'task_date'>>).map(normalizeTaskRecord),
-      }
-    }
-    return { ...byDateResult, data: [] as DailyTaskRecord[] }
-  }
-
-  // Query 2: tasks with no task_date (legacy rows) whose created_at falls on this day.
-  const byCreatedAtResult = await queryClient
-    .from('invoice_tasks')
-    .select(DAILY_TASK_SELECT)
-    .is('task_date', null)
-    .gte('created_at', startDateTime)
-    .lt('created_at', endDateTime)
-    .order('assigned_to', { ascending: true })
-    .order('created_at', { ascending: true })
-
-  const byDate = ((byDateResult.data ?? []) as DailyTaskRecord[]).map(normalizeTaskRecord)
-  const byCreatedAt = ((byCreatedAtResult.data ?? []) as DailyTaskRecord[]).map(normalizeTaskRecord)
-
-  // Merge, deduplicate by id.
-  const seen = new Set<string>()
-  const merged: DailyTaskRecord[] = []
-  for (const row of [...byDate, ...byCreatedAt]) {
-    if (!seen.has(row.id)) {
-      seen.add(row.id)
-      merged.push(row)
-    }
-  }
-
-  return { data: merged, error: null }
-}
-
 export async function getDailyWorks(
   date: string | null | undefined,
   queryClient: QueryClient = supabase
 ) {
   const normalizedDate = normalizeDailyWorksDate(date)
-  const taskRowsResult = await selectDailyTaskRows(normalizedDate, queryClient)
+  const startDateTime = `${normalizedDate}T00:00:00Z`
+  const endDateTime = `${getNextDateValue(normalizedDate)}T00:00:00Z`
+
+  const taskRowsResult = await queryClient
+    .from('invoice_tasks')
+    .select(DAILY_TASK_SELECT)
+    .gte('created_at', startDateTime)
+    .lt('created_at', endDateTime)
+    .order('assigned_to', { ascending: true })
+    .order('created_at', { ascending: true })
 
   if (taskRowsResult.error) {
-    return {
-      date: normalizedDate,
-      data: [] as DailyWorkItem[],
-      error: taskRowsResult.error,
-    }
+    return { date: normalizedDate, data: [] as DailyWorkItem[], error: taskRowsResult.error }
   }
 
   const taskRows = (taskRowsResult.data ?? []) as DailyTaskRecord[]
   if (taskRows.length === 0) {
-    return {
-      date: normalizedDate,
-      data: [] as DailyWorkItem[],
-      error: null,
-    }
+    return { date: normalizedDate, data: [] as DailyWorkItem[], error: null }
   }
 
   const invoiceIds = [...new Set(taskRows.map((task) => task.invoice_id).filter(Boolean))]
@@ -191,11 +108,7 @@ export async function getDailyWorks(
     .in('id', invoiceIds)
 
   if (invoiceError) {
-    return {
-      date: normalizedDate,
-      data: [] as DailyWorkItem[],
-      error: invoiceError,
-    }
+    return { date: normalizedDate, data: [] as DailyWorkItem[], error: invoiceError }
   }
 
   const invoices = (invoiceRows ?? []) as InvoiceLookupRecord[]
@@ -207,21 +120,14 @@ export async function getDailyWorks(
     : { data: [] as ClientLookupRecord[], error: null }
 
   if (clientError) {
-    return {
-      date: normalizedDate,
-      data: [] as DailyWorkItem[],
-      error: clientError,
-    }
+    return { date: normalizedDate, data: [] as DailyWorkItem[], error: clientError }
   }
 
   const clientLookup = new Map(((clientRows ?? []) as ClientLookupRecord[]).map((client) => [client.id, client] as const))
   const serviceOrderLookup = new Map<string, string[]>()
   const serviceOrderResult = await selectServiceOrdersByInvoiceIds(invoiceIds, queryClient)
 
-  for (const serviceOrder of (serviceOrderResult.data ?? []) as Array<{
-    description: string
-    invoice_id: string
-  }>) {
+  for (const serviceOrder of (serviceOrderResult.data ?? []) as Array<{ description: string; invoice_id: string }>) {
     const currentDescriptions = serviceOrderLookup.get(serviceOrder.invoice_id) ?? []
     currentDescriptions.push(serviceOrder.description)
     serviceOrderLookup.set(serviceOrder.invoice_id, currentDescriptions)
@@ -245,7 +151,7 @@ export async function getDailyWorks(
       dept: task.dept ?? null,
       task: task.particulars ?? null,
       service_orders: serviceOrderLookup.get(task.invoice_id) ?? [],
-      task_date: task.task_date ?? task.created_at?.slice(0, 10) ?? normalizedDate,
+      task_date: task.created_at?.slice(0, 10) ?? normalizedDate,
       status: task.status ?? null,
       payment_mode: task.payment_mode ?? null,
       ref_no: task.ref_no ?? null,
@@ -256,9 +162,5 @@ export async function getDailyWorks(
     } satisfies DailyWorkItem
   })
 
-  return {
-    date: normalizedDate,
-    data: items,
-    error: null,
-  }
+  return { date: normalizedDate, data: items, error: null }
 }
