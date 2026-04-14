@@ -565,8 +565,7 @@ export default function InvoiceDetailClient({
       }
 
       // Convert the date input (YYYY-MM-DD) to a full ISO timestamp for created_at.
-      // Only include created_at if the user explicitly set a date.
-      const dateInput = task.task_date || currentTask?.created_at?.slice(0, 10) || null
+      const dateInput = task.task_date.trim() || currentTask?.created_at?.slice(0, 10) || null
       const resolvedCreatedAt = dateInput ? `${dateInput}T00:00:00.000Z` : null
 
       const taskPayload = {
@@ -575,7 +574,7 @@ export default function InvoiceDetailClient({
         dept: task.dept,
         particulars,
         assigned_to: task.assigned_to || null,
-        ...(resolvedCreatedAt ? { created_at: resolvedCreatedAt } : {}),
+        created_at: resolvedCreatedAt,
         charged,
         paid: parseFloat(task.paid) || 0,
         payment_mode: task.payment_mode || null,

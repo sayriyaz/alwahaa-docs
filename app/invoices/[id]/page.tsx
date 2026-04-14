@@ -57,7 +57,7 @@ export default async function InvoiceDetailsPage({
 
   const invoice = invoiceData as Invoice
 
-  const [serviceOrdersResult, tasksResult, receiptsResult, assignableUsersResult, clientsResult] = await Promise.allSettled([
+  const [{ data: serviceOrderData }, { data: taskData, error: taskError }, { data: receiptData }, assignableUsers, clientsResult] = await Promise.all([
     selectServiceOrders(id, db),
     selectInvoiceTasks(id, db),
     db
@@ -72,45 +72,29 @@ export default async function InvoiceDetailsPage({
       .order('name'),
   ])
 
-  const resolvedServiceOrders = serviceOrdersResult.status === 'fulfilled'
-    ? serviceOrdersResult.value
-    : { data: [] as Array<{ id: string; invoice_id: string; description: string; amount: number | null }>, error: null }
-  const resolvedTasks = tasksResult.status === 'fulfilled'
-    ? tasksResult.value
-    : { data: [] as InvoiceTask[], error: null }
-  const resolvedReceipts = receiptsResult.status === 'fulfilled'
-    ? receiptsResult.value
-    : { data: [] as InvoiceReceipt[], error: null }
-  const assignableUsers = assignableUsersResult.status === 'fulfilled'
-    ? assignableUsersResult.value
-    : ([] as AssignableUser[])
-  const resolvedClients = clientsResult.status === 'fulfilled'
-    ? clientsResult.value
-    : { data: [] as ClientOption[], error: null }
+  if (taskError) {
+    console.error('[invoice tasks] fetch error for invoice', id, taskError)
+  }
 
   let client: ClientDetails | null = null
   if (invoice.client_id) {
-    try {
-      const { data: clientData } = await db
-        .from('clients')
-        .select('id, name, contact_person, phone, email')
-        .eq('id', invoice.client_id)
-        .maybeSingle()
+    const { data: clientData } = await db
+      .from('clients')
+      .select('id, name, contact_person, phone, email')
+      .eq('id', invoice.client_id)
+      .maybeSingle()
 
-      client = (clientData ?? null) as ClientDetails | null
-    } catch {
-      client = null
-    }
+    client = (clientData ?? null) as ClientDetails | null
   }
 
   return (
     <InvoiceDetailClient
       invoice={invoice}
       client={client}
-      clients={(resolvedClients.data ?? []) as ClientOption[]}
-      serviceOrders={(resolvedServiceOrders.data ?? []) as ServiceOrder[]}
-      tasks={(resolvedTasks.data ?? []) as InvoiceTask[]}
-      receipts={(resolvedReceipts.data ?? []) as InvoiceReceipt[]}
+      clients={(clientsResult.data ?? []) as ClientOption[]}
+      serviceOrders={(serviceOrderData ?? []) as ServiceOrder[]}
+      tasks={(taskData ?? []) as InvoiceTask[]}
+      receipts={(receiptData ?? []) as InvoiceReceipt[]}
       permissions={permissions}
       roleLabel={appUser.role}
       assignableUsers={assignableUsers as AssignableUser[]}
