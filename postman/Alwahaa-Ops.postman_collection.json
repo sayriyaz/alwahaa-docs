@@ -1,0 +1,341 @@
+{
+  "info": {
+    "_postman_id": "2d8f7ce8-5b16-470c-a638-5b5edfdac641",
+    "name": "Alwahaa Ops",
+    "description": "Postman collection for the Alwahaa Ops app. Start with the Supabase sign-in request, then call the app session route to set the HTTP-only cookies the app expects. After that, the app API requests will work in the same cookie jar.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "expiresAt",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "1. Supabase Password Sign In",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Supabase sign-in succeeded', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', data.access_token || '');",
+                  "pm.collectionVariables.set('refreshToken', data.refresh_token || '');",
+                  "pm.collectionVariables.set('expiresAt', String(data.expires_at || ''));",
+                  "",
+                  "pm.test('Session tokens saved to collection variables', function () {",
+                  "  pm.expect(pm.collectionVariables.get('accessToken')).to.not.eql('');",
+                  "  pm.expect(pm.collectionVariables.get('refreshToken')).to.not.eql('');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "apikey",
+                "value": "{{supabaseAnonKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{supabaseUrl}}/auth/v1/token?grant_type=password",
+              "host": [
+                "{{supabaseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "v1",
+                "token"
+              ],
+              "query": [
+                {
+                  "key": "grant_type",
+                  "value": "password"
+                }
+              ]
+            },
+            "description": "Gets a Supabase access token and refresh token using the same email/password flow as the login form."
+          }
+        },
+        {
+          "name": "2. Create App Session Cookies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('App session cookies were created', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const cookies = pm.cookies.toObject();",
+                  "  pm.expect(cookies['alwahaa-access-token']).to.exist;",
+                  "  pm.expect(cookies['alwahaa-refresh-token']).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accessToken\": \"{{accessToken}}\",\n  \"refreshToken\": \"{{refreshToken}}\",\n  \"expiresAt\": {{expiresAt}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "session"
+              ]
+            },
+            "description": "Copies the Supabase session into the app's HTTP-only cookies so the app API routes treat Postman like a signed-in browser."
+          }
+        },
+        {
+          "name": "3. Clear App Session",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/auth/session",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "session"
+              ]
+            },
+            "description": "Clears the app's session cookies."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Daily Works",
+      "item": [
+        {
+          "name": "Get Daily Works",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/daily-works?date={{date}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "daily-works"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "{{date}}"
+                }
+              ]
+            },
+            "description": "Returns the Daily Works worksheet items for the selected date."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attendance",
+      "item": [
+        {
+          "name": "My Attendance Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance/my-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "my-status"
+              ]
+            },
+            "description": "Returns the current signed-in user's attendance status code for the dashboard avatar/toast."
+          }
+        },
+        {
+          "name": "Admin Daily Attendance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance?view=daily&date={{date}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "daily"
+                },
+                {
+                  "key": "date",
+                  "value": "{{date}}"
+                }
+              ]
+            },
+            "description": "Admin-only endpoint for daily biometric attendance."
+          }
+        },
+        {
+          "name": "Admin Monthly Attendance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/attendance?view=monthly&month={{month}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ],
+              "query": [
+                {
+                  "key": "view",
+                  "value": "monthly"
+                },
+                {
+                  "key": "month",
+                  "value": "{{month}}"
+                }
+              ]
+            },
+            "description": "Admin-only endpoint for monthly biometric attendance."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Users",
+      "item": [
+        {
+          "name": "Create App User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"new.user@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"New User\",\n  \"role\": \"editor\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ]
+            },
+            "description": "Admin-only. Current API schema accepts admin, editor, and viewer roles."
+          }
+        },
+        {
+          "name": "Update App User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated User\",\n  \"role\": \"viewer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "Admin-only. Set {{userId}} in the environment before using this request."
+          }
+        },
+        {
+          "name": "Delete App User",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users",
+                "{{userId}}"
+              ]
+            },
+            "description": "Admin-only. Deletes the app_users row for {{userId}}."
+          }
+        }
+      ]
+    }
+  ]
+}
