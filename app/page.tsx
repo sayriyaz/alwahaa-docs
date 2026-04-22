@@ -1,566 +1,597 @@
 import Link from 'next/link'
 import { requireAuthenticatedAppUser } from '@/lib/auth'
-import { getDailyWorks } from '@/lib/daily-works'
 import { selectAllInvoiceTasks, type InvoiceTaskRecord } from '@/lib/invoice-tasks'
 import { getClientNameMap, getInvoices } from '@/lib/invoices'
-import DashboardTeamLoadCard from '@/components/dashboard-team-load-card'
+import OpsDashboardClock from '@/components/ops-dashboard-clock'
 
-type InvoiceReceiptSummary = {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type InvoiceReceiptRow = {
   id: string
   invoice_id: string
   amount: number | null
-  receipt_no: string | null
   date: string | null
   created_at: string | null
 }
 
-function formatCurrency(amount: number | null) {
-  return `AED ${(amount ?? 0).toFixed(2)}`
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const CHART_COLORS = ['#0d9488', '#f59e0b', '#3b82f6', '#f97316', '#6b7280']
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatCompact(amount: number): string {
+  if (amount >= 1_000_000) return `AED ${(amount / 1_000_000).toFixed(1)}M`
+  if (amount >= 1_000) return `AED ${(amount / 1_000).toFixed(1)}K`
+  return `AED ${amount.toFixed(0)}`
 }
 
-function formatDate(value: string | null) {
-  if (!value) {
-    return 'Not set'
-  }
-
-  const parsedDate = new Date(value)
-  if (Number.isNaN(parsedDate.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('en-AE', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  }).format(parsedDate)
+function formatDateShort(value: string | null): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return `${MONTH_NAMES[d.getUTCMonth()]} ${d.getUTCDate()}`
 }
 
-function getTodayDateValue() {
+function getLastNMonths(n: number): Array<{ key: string; label: string }> {
+  const result: Array<{ key: string; label: string }> = []
   const now = new Date()
-  const localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60_000))
-  return localTime.toISOString().slice(0, 10)
-}
-
-function getDateOnlyValue(value: string | null) {
-  if (!value) {
-    return null
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    result.push({ key, label: MONTH_NAMES[d.getMonth()] })
   }
-
-  return value.slice(0, 10)
-}
-
-function getTaskDateValue(task: InvoiceTaskRecord) {
-  return task.task_date ?? getDateOnlyValue(task.created_at)
-}
-
-function getDaysBetween(startDate: string, endDate: string) {
-  const start = new Date(`${startDate}T00:00:00Z`)
-  const end = new Date(`${endDate}T00:00:00Z`)
-  return Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86_400_000))
-}
-
-function getTaskAgeLabel(days: number) {
-  return `${days} day${days === 1 ? '' : 's'} open`
-}
-
-function getClientLabel(clientId: string | null, clientNames: Map<string, string>) {
-  return clientId ? clientNames.get(clientId) ?? 'Unknown client' : 'Unknown client'
-}
-
-function getInvoiceStatusClasses(status: string | null) {
-  switch (status) {
-    case 'Partial':
-      return 'bg-amber-50 text-amber-700'
-    case 'Active':
-      return 'bg-emerald-50 text-emerald-700'
-    case 'Completed':
-      return 'bg-sky-50 text-sky-700'
-    case 'Draft':
-      return 'bg-slate-100 text-slate-700'
-    default:
-      return 'bg-gray-100 text-gray-600'
-  }
-}
-
-function getTaskStatusClasses(status: string | null) {
-  switch (status) {
-    case 'On Account':
-      return 'bg-amber-50 text-amber-700'
-    case 'Paid':
-      return 'bg-sky-50 text-sky-700'
-    case 'Done':
-      return 'bg-emerald-50 text-emerald-700'
-    default:
-      return 'bg-rose-50 text-rose-700'
-  }
+  return result
 }
 
 function isOpenTask(status: string | null) {
   return (status ?? 'Pending') !== 'Done'
 }
 
-function OverviewCard({
+function getStatusClasses(status: string | null) {
+  switch (status) {
+    case 'Active':    return 'bg-teal-900/60 text-teal-300 border border-teal-700/40'
+    case 'Pending':   return 'bg-blue-900/60 text-blue-300 border border-blue-700/40'
+    case 'Completed': return 'bg-green-900/60 text-green-300 border border-green-700/40'
+    case 'Partial':   return 'bg-amber-900/60 text-amber-300 border border-amber-700/40'
+    case 'Cancelled': return 'bg-gray-800 text-gray-400 border border-gray-700'
+    default:          return 'bg-gray-800 text-gray-400 border border-gray-700'
+  }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatCard({
   title,
   value,
-  description,
-  children,
-  href,
+  sub,
+  subColor,
+  barColor,
+  barPct,
 }: {
   title: string
   value: string
-  description: string
-  children: React.ReactNode
-  href?: string
+  sub: string
+  subColor: string
+  barColor: string
+  barPct: number
 }) {
-  const cardClassName = 'group rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_20px_45px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_26px_55px_rgba(15,23,42,0.10)]'
-  const content = (
-    <>
-      <p className="text-[0.68rem] uppercase tracking-[0.24em] text-slate-400">{title}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
-      <div className="mt-4 border-t border-slate-100 pt-4">{children}</div>
-    </>
+  return (
+    <div className="rounded-xl border border-[#1e1e1e] bg-[#111111] p-5">
+      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-gray-500">{title}</p>
+      <p className="mt-3 text-3xl font-bold tracking-tight text-white">{value}</p>
+      <p className={`mt-1 text-xs font-medium ${subColor}`}>{sub}</p>
+      <div className="mt-4 h-[3px] w-full rounded-full bg-[#1f1f1f]">
+        <div className={`h-[3px] rounded-full ${barColor}`} style={{ width: `${Math.min(Math.max(barPct, 4), 100)}%` }} />
+      </div>
+    </div>
   )
+}
 
-  if (href) {
+function DonutChart({ segments, size = 140 }: {
+  segments: Array<{ label: string; value: number; color: string }>
+  size?: number
+}) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0)
+
+  if (total === 0) {
     return (
-      <Link href={href} className={`${cardClassName} block`}>
-        {content}
-      </Link>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size / 2} cy={size / 2} r={size * 0.44} fill="#1c1c1c" />
+        <circle cx={size / 2} cy={size / 2} r={size * 0.27} fill="#111111" />
+      </svg>
     )
   }
 
+  const cx = size / 2
+  const cy = size / 2
+  const outerR = size * 0.44
+  const innerR = size * 0.27
+  const paths: Array<{ d: string; color: string }> = []
+  let angle = -Math.PI / 2
+
+  for (const seg of segments) {
+    if (seg.value <= 0) continue
+    const ratio = seg.value / total
+    const startAngle = angle
+    const endAngle = angle + ratio * 2 * Math.PI
+    angle = endAngle
+
+    const largeArc = ratio > 0.5 ? 1 : 0
+    const x1 = cx + outerR * Math.cos(startAngle)
+    const y1 = cy + outerR * Math.sin(startAngle)
+    const x2 = cx + outerR * Math.cos(endAngle)
+    const y2 = cy + outerR * Math.sin(endAngle)
+    const ix1 = cx + innerR * Math.cos(endAngle)
+    const iy1 = cy + innerR * Math.sin(endAngle)
+    const ix2 = cx + innerR * Math.cos(startAngle)
+    const iy2 = cy + innerR * Math.sin(startAngle)
+
+    paths.push({
+      d: `M ${x1} ${y1} A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix2} ${iy2} Z`,
+      color: seg.color,
+    })
+  }
+
   return (
-    <section className={cardClassName}>
-      {content}
-    </section>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {paths.map((p, i) => (
+        <path key={i} d={p.d} fill={p.color} />
+      ))}
+      <circle cx={cx} cy={cy} r={innerR} fill="#111111" />
+    </svg>
   )
 }
 
-function DashboardPanel({
-  title,
-  description,
-  aside,
-  children,
-}: {
-  title: string
-  description: string
-  aside?: React.ReactNode
-  children: React.ReactNode
-}) {
+function BarChart({ data }: { data: Array<{ label: string; value: number }> }) {
+  const max = Math.max(...data.map((d) => d.value), 1)
+  const W = 280
+  const H = 120
+  const padX = 6
+  const padBottom = 22
+  const padTop = 8
+  const chartH = H - padBottom - padTop
+  const cols = data.length || 1
+  const slotW = (W - padX * 2) / cols
+  const barW = Math.max(slotW - 8, 4)
+
   return (
-    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-      <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-          <p className="text-sm text-slate-500">{description}</p>
-        </div>
-        {aside ? <div className="shrink-0">{aside}</div> : null}
-      </div>
-      {children}
-    </section>
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+      {[0.25, 0.5, 0.75, 1].map((frac, i) => {
+        const y = padTop + chartH * (1 - frac)
+        return <line key={i} x1={padX} y1={y} x2={W - padX} y2={y} stroke="#1e1e1e" strokeWidth="1" />
+      })}
+      {data.map((d, i) => {
+        const barH = Math.max((d.value / max) * chartH, 2)
+        const x = padX + i * slotW + (slotW - barW) / 2
+        const y = padTop + chartH - barH
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={barH} fill="#0d9488" rx="3" />
+            <text x={x + barW / 2} y={H - 5} textAnchor="middle" fill="#4b5563" fontSize="9">
+              {d.label}
+            </text>
+          </g>
+        )
+      })}
+    </svg>
   )
 }
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function Home() {
-  const { appUser, db } = await requireAuthenticatedAppUser()
-  const [invoices, clientNames, clientsResponse, tasksResult, receiptsResponse, dailyWorksResult] = await Promise.all([
+  const { db } = await requireAuthenticatedAppUser()
+
+  const [invoices, clientNames, tasksResult, receiptsResult] = await Promise.all([
     getInvoices(db),
     getClientNameMap(db),
-    db.from('clients').select('id', { count: 'exact', head: true }),
     selectAllInvoiceTasks(db),
     db
       .from('invoice_receipts')
-      .select('id, invoice_id, amount, receipt_no, date, created_at')
-      .order('date', { ascending: false }),
-    getDailyWorks(undefined, db),
+      .select('id, invoice_id, amount, date, created_at')
+      .order('created_at', { ascending: false }),
   ])
 
   const tasks = (tasksResult.data ?? []) as InvoiceTaskRecord[]
-  const receipts = (receiptsResponse.data ?? []) as InvoiceReceiptSummary[]
-  const clientCount = clientsResponse.count ?? 0
-  const totalBilled = invoices.reduce((sum, invoice) => sum + (invoice.total_amount ?? 0), 0)
-  const totalCollection = receipts.reduce((sum, receipt) => sum + (receipt.amount ?? 0), 0)
-  const invoicesById = new Map(invoices.map((invoice) => [invoice.id, invoice] as const))
+  const receipts = (receiptsResult.data ?? []) as InvoiceReceiptRow[]
 
-  const openTasks = tasks.filter((task) => isOpenTask(task.status))
-  const dailyWorks = dailyWorksResult.data
-  const dailyWorksPreview = dailyWorks.slice(0, 4)
-  const todayDateValue = dailyWorksResult.date || getTodayDateValue()
+  // ── Date context ──
+  const now = new Date()
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`
+  const oneWeekAgoStr = new Date(now.getTime() - 7 * 86_400_000).toISOString().slice(0, 10)
+  const currentMonthLabel = MONTH_NAMES[now.getMonth()].toUpperCase()
 
-  const receiptTotalsByInvoiceId = new Map<string, number>()
-  for (const receipt of receipts) {
-    receiptTotalsByInvoiceId.set(
-      receipt.invoice_id,
-      (receiptTotalsByInvoiceId.get(receipt.invoice_id) ?? 0) + (receipt.amount ?? 0)
-    )
+  // ── Receipt totals per invoice ──
+  const receiptTotals = new Map<string, number>()
+  for (const r of receipts) {
+    receiptTotals.set(r.invoice_id, (receiptTotals.get(r.invoice_id) ?? 0) + (r.amount ?? 0))
   }
 
-  const allPendingCollections = invoices
-    .map((invoice) => {
-      const paidAmount = receiptTotalsByInvoiceId.get(invoice.id) ?? 0
-      const outstanding = Math.max((invoice.total_amount ?? 0) - paidAmount, 0)
-
-      return {
-        invoice,
-        clientLabel: getClientLabel(invoice.client_id, clientNames),
-        paidAmount,
-        outstanding,
-      }
-    })
-    .filter(({ invoice, outstanding }) => outstanding > 0 && (invoice.status ?? '') !== 'Cancelled')
-    .sort((left, right) => right.outstanding - left.outstanding || (left.invoice.date ?? '').localeCompare(right.invoice.date ?? ''))
-
-  const pendingCollections = allPendingCollections.slice(0, 6)
-  const totalPendingCollectionOutstanding = allPendingCollections.reduce((sum, row) => sum + row.outstanding, 0)
-
-  const allOverdueTasks = openTasks
-    .map((task) => {
-      const invoice = invoicesById.get(task.invoice_id)
-      const taskDateValue = getTaskDateValue(task)
-      const ageDays = taskDateValue ? getDaysBetween(taskDateValue, todayDateValue) : 0
-
-      return {
-        task,
-        invoice,
-        clientLabel: getClientLabel(invoice?.client_id ?? null, clientNames),
-        taskDateValue,
-        ageDays,
-      }
-    })
-    .filter((entry) => entry.ageDays >= 3)
-    .sort((left, right) => right.ageDays - left.ageDays || left.clientLabel.localeCompare(right.clientLabel))
-
-  const overdueTasks = allOverdueTasks.slice(0, 6)
-
-  const departmentQueue = [...openTasks.reduce((queueMap, task) => {
-    const department = task.dept?.trim() || 'OTHER'
-    const current = queueMap.get(department) ?? { department, openCount: 0, pendingCount: 0, onAccountCount: 0, outstandingAmount: 0 }
-    current.openCount += 1
-    if ((task.status ?? 'Pending') === 'Pending') {
-      current.pendingCount += 1
-    }
-    if (task.status === 'On Account') {
-      current.onAccountCount += 1
-    }
-    current.outstandingAmount += Math.max((task.charged ?? 0) - (task.paid ?? 0), 0)
-    queueMap.set(department, current)
-    return queueMap
-  }, new Map<string, { department: string; openCount: number; pendingCount: number; onAccountCount: number; outstandingAmount: number }>()).values()]
-    .sort((left, right) => right.openCount - left.openCount || right.outstandingAmount - left.outstandingAmount || left.department.localeCompare(right.department))
-
-  const totalVendorOutstanding = openTasks.reduce(
-    (sum, task) => sum + Math.max((task.charged ?? 0) - (task.paid ?? 0), 0),
-    0
+  // ── Stat 1: Active applications ──
+  const activeInvoices = invoices.filter((i) =>
+    ['Active', 'Pending', 'Partial'].includes(i.status ?? '')
   )
+  const thisWeekCount = invoices.filter((i) => (i.created_at ?? '') >= oneWeekAgoStr).length
 
-  const latestInvoices = invoices.slice(0, 5)
-  const latestReceipts = receipts.slice(0, 5)
+  // ── Stat 2: Revenue this month ──
+  const currentMonthRevenue = invoices
+    .filter((i) => (i.date ?? '').startsWith(currentMonthKey) && i.status !== 'Cancelled')
+    .reduce((s, i) => s + (i.total_amount ?? 0), 0)
+  const prevMonthRevenue = invoices
+    .filter((i) => (i.date ?? '').startsWith(prevMonthKey) && i.status !== 'Cancelled')
+    .reduce((s, i) => s + (i.total_amount ?? 0), 0)
+  const revenueGrowthPct =
+    prevMonthRevenue > 0
+      ? ((currentMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100
+      : 0
+
+  // ── Stat 3: Pending payments ──
+  const pendingItems = invoices
+    .filter((i) => i.status !== 'Cancelled')
+    .map((i) => {
+      const paid = receiptTotals.get(i.id) ?? 0
+      return { invoice: i, outstanding: Math.max((i.total_amount ?? 0) - paid, 0) }
+    })
+    .filter((x) => x.outstanding > 0)
+  const totalOutstanding = pendingItems.reduce((s, x) => s + x.outstanding, 0)
+
+  // ── Stat 4: Completed this month ──
+  const completedThisMonth = invoices.filter(
+    (i) => i.status === 'Completed' && (i.date ?? '').startsWith(currentMonthKey)
+  )
+  const cancelledThisMonth = invoices.filter(
+    (i) => i.status === 'Cancelled' && (i.date ?? '').startsWith(currentMonthKey)
+  )
+  const finishedTotal = completedThisMonth.length + cancelledThisMonth.length
+  const successRate =
+    finishedTotal > 0 ? ((completedThisMonth.length / finishedTotal) * 100).toFixed(1) : null
+
+  // ── Monthly revenue (last 4 months) ──
+  const last4Months = getLastNMonths(4)
+  const monthlyRevenueData = last4Months.map(({ key, label }) => ({
+    label,
+    value: invoices
+      .filter((i) => (i.date ?? '').startsWith(key) && i.status !== 'Cancelled')
+      .reduce((s, i) => s + (i.total_amount ?? 0), 0),
+  }))
+
+  // ── Service mix (by dept) ──
+  const deptCount = new Map<string, number>()
+  for (const t of tasks) {
+    const dept = t.dept?.trim() || 'Other'
+    deptCount.set(dept, (deptCount.get(dept) ?? 0) + 1)
+  }
+  const totalTaskCount = tasks.length || 1
+  const serviceMix = [...deptCount.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value], i) => ({
+      label,
+      value,
+      color: CHART_COLORS[i],
+      pct: Math.round((value / totalTaskCount) * 100),
+    }))
+
+  // ── Staff workload ──
+  const openTasks = tasks.filter((t) => isOpenTask(t.status))
+  const workloadMap = new Map<string, number>()
+  for (const t of openTasks) {
+    const name = t.assigned_to?.trim() || 'Unassigned'
+    workloadMap.set(name, (workloadMap.get(name) ?? 0) + 1)
+  }
+  const maxWorkload = Math.max(...workloadMap.values(), 1)
+  const staffWorkload = [...workloadMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({
+      name,
+      count,
+      initials: name
+        .split(' ')
+        .map((n) => n[0] ?? '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase(),
+      pct: Math.round((count / maxWorkload) * 100),
+    }))
+
+  // ── Recent applications ──
+  const recentApplications = invoices.slice(0, 5).map((i) => ({
+    id: i.id,
+    ref: i.invoice_no,
+    client: i.client_id ? (clientNames.get(i.client_id) ?? 'Unknown') : 'Unknown',
+    service: i.notes?.slice(0, 38) ?? '—',
+    status: i.status,
+    date: i.date,
+  }))
+
+  // ── Recent activity ──
+  type ActivityItem = { time: string; text: string; dotColor: string }
+  const recentActivity: ActivityItem[] = [
+    ...invoices.slice(0, 4).map((i) => ({
+      time: i.created_at?.slice(11, 16) ?? '',
+      text: `Invoice #${i.invoice_no} — ${i.client_id ? (clientNames.get(i.client_id) ?? '') : ''}`,
+      dotColor: 'bg-teal-400',
+    })),
+    ...tasks.slice(0, 4).map((t) => ({
+      time: t.created_at?.slice(11, 16) ?? '',
+      text: `Task: ${(t.particulars ?? 'Untitled').slice(0, 40)}`,
+      dotColor: 'bg-blue-400',
+    })),
+  ]
+    .sort((a, b) => b.time.localeCompare(a.time))
+    .slice(0, 6)
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)]">
-      <div className="mx-auto max-w-[1400px] px-4 py-5 lg:px-6 lg:py-6">
-        <div className="rounded-[34px] border border-white/80 bg-white/70 p-4 shadow-[0_30px_80px_rgba(15,23,42,0.08)] backdrop-blur lg:p-6">
-          <main className="space-y-6">
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <OverviewCard
-                title="Daily Works"
-                value={String(dailyWorks.length)}
-                description="Open the daily worksheet and review task, service order, and invoice activity for the day."
-                href="/daily-works"
-              >
-                {dailyWorksPreview.length === 0 ? (
-                  <p className="rounded-2xl bg-slate-50 px-3 py-4 text-sm text-slate-500">
-                    No daily tasks found. Click to open the worksheet and switch dates.
-                  </p>
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
+      {/* ── Header ── */}
+      <header className="border-b border-[#1a1a1a] px-6 py-4">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-xs font-bold text-black">
+              AW
+            </div>
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-gray-500">
+                Alwahaa Document Clearing
+              </p>
+              <p className="text-xs font-bold uppercase tracking-[0.15em] text-white">
+                Operations Dashboard
+              </p>
+            </div>
+          </div>
+          <div className="rounded-full border border-[#1e1e1e] px-3 py-1.5 text-[11px] text-gray-400 tabular-nums">
+            <OpsDashboardClock />
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-[1400px] px-6 py-6">
+        {/* ── Tabs ── */}
+        <nav className="mb-6 flex gap-1">
+          {['Overview', 'Applications', 'Finance', 'Staff'].map((tab, i) => (
+            <span
+              key={tab}
+              className={`cursor-default rounded-lg px-4 py-2 text-sm font-medium ${
+                i === 0
+                  ? 'bg-[#1a1a1a] text-white'
+                  : 'text-gray-600 hover:text-gray-400'
+              }`}
+            >
+              {tab}
+            </span>
+          ))}
+        </nav>
+
+        {/* ── Stat cards ── */}
+        <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            title="Active Applications"
+            value={String(activeInvoices.length)}
+            sub={`+${thisWeekCount} this week`}
+            subColor="text-green-400"
+            barColor="bg-green-500"
+            barPct={invoices.length > 0 ? (activeInvoices.length / invoices.length) * 100 : 0}
+          />
+          <StatCard
+            title={`Revenue (${currentMonthLabel})`}
+            value={formatCompact(currentMonthRevenue)}
+            sub={
+              prevMonthRevenue > 0
+                ? `${revenueGrowthPct >= 0 ? '+' : ''}${revenueGrowthPct.toFixed(1)}% vs ${MONTH_NAMES[prevMonthDate.getMonth()]}`
+                : 'No prior month data'
+            }
+            subColor={revenueGrowthPct >= 0 ? 'text-green-400' : 'text-red-400'}
+            barColor="bg-amber-400"
+            barPct={55}
+          />
+          <StatCard
+            title="Pending Payments"
+            value={String(pendingItems.length)}
+            sub={`${formatCompact(totalOutstanding)} outstanding`}
+            subColor="text-red-400"
+            barColor="bg-red-500"
+            barPct={invoices.length > 0 ? (pendingItems.length / invoices.length) * 100 : 0}
+          />
+          <StatCard
+            title={`Completed (${currentMonthLabel})`}
+            value={String(completedThisMonth.length)}
+            sub={successRate ? `${successRate}% success rate` : 'No data yet'}
+            subColor="text-blue-400"
+            barColor="bg-blue-500"
+            barPct={successRate ? parseFloat(successRate) : 0}
+          />
+        </div>
+
+        {/* ── Main grid: Recent Applications + Service Mix ── */}
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {/* Recent Applications */}
+          <div className="lg:col-span-2 rounded-xl border border-[#1e1e1e] bg-[#111111] p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                Recent Applications
+              </h2>
+              <Link href="/invoices" className="text-xs font-medium text-teal-400 hover:text-teal-300">
+                VIEW ALL ↗
+              </Link>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#1e1e1e] text-[10px] uppercase tracking-[0.14em] text-gray-600">
+                  <th className="pb-3 text-left font-medium">Ref</th>
+                  <th className="pb-3 text-left font-medium">Client</th>
+                  <th className="pb-3 text-left font-medium hidden md:table-cell">Notes</th>
+                  <th className="pb-3 text-left font-medium">Status</th>
+                  <th className="pb-3 text-left font-medium hidden sm:table-cell">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#181818]">
+                {recentApplications.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-sm text-gray-600">
+                      No invoices yet.
+                    </td>
+                  </tr>
                 ) : (
-                  <div>
-                    <div className="flex gap-3 overflow-x-auto pb-2">
-                    {dailyWorksPreview.map((item) => (
-                      <div key={item.id} className="min-w-[240px] rounded-[22px] border border-slate-200 bg-slate-50 p-4 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="font-medium text-slate-900">{item.task || 'Untitled task'}</p>
-                          <span className="rounded-full bg-white px-2.5 py-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-slate-600 shadow-sm">
-                            {item.dept || 'Task'}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-slate-500">
-                          {item.client_name || 'Unknown client'} · {item.invoice_no || 'Invoice'}
-                        </p>
-                      </div>
-                    ))}
-                    </div>
-                    <div className="pt-1 text-xs font-medium uppercase tracking-[0.16em] text-blue-700">
-                      Open worksheet
-                    </div>
-                  </div>
-                )}
-              </OverviewCard>
-
-              <DashboardTeamLoadCard
-                initialDate={dailyWorksResult.date}
-                initialItems={dailyWorks}
-              />
-
-              <OverviewCard
-                title="Total Billed"
-                value={formatCurrency(totalBilled)}
-                description="Current invoice value recorded in the system."
-              >
-                <div className="space-y-2 text-sm text-slate-600">
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-3">
-                    <span>Total invoices</span>
-                    <span className="font-semibold text-slate-900">{invoices.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-3">
-                    <span>Total clients</span>
-                    <span className="font-semibold text-slate-900">{clientCount}</span>
-                  </div>
-                </div>
-              </OverviewCard>
-
-              <OverviewCard
-                title="Total Collection"
-                value={formatCurrency(totalCollection)}
-                description="Receipts collected and vendor side still pending."
-              >
-                <div className="space-y-2 text-sm text-slate-600">
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-3">
-                    <span>Receipt entries</span>
-                    <span className="font-semibold text-slate-900">{receipts.length}</span>
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-3">
-                    <span>Vendor outstanding</span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(totalVendorOutstanding)}</span>
-                  </div>
-                </div>
-              </OverviewCard>
-            </section>
-
-            <section className="grid gap-5 xl:grid-cols-3">
-              <DashboardPanel
-                title="Pending Collections"
-                description="Invoices that still have money to be collected from clients."
-                aside={
-                  <div className="text-left md:text-right">
-                    <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Outstanding</p>
-                    <p className="mt-1 text-lg font-semibold text-amber-700">{formatCurrency(totalPendingCollectionOutstanding)}</p>
-                    <p className="text-sm text-slate-500">{allPendingCollections.length} invoices</p>
-                    <Link
-                      href="/invoices?filter=pending-collections"
-                      className="mt-2 inline-block text-xs font-medium uppercase tracking-[0.14em] text-blue-700 hover:text-blue-800"
-                    >
-                      Open unpaid invoices
-                    </Link>
-                  </div>
-                }
-              >
-                {pendingCollections.length === 0 ? (
-                  <div className="px-5 py-8 text-sm text-slate-500">No pending collections right now.</div>
-                ) : (
-                  <div className="flex gap-3 overflow-x-auto px-5 py-5">
-                    {pendingCollections.map(({ invoice, clientLabel, paidAmount, outstanding }) => (
-                      <Link
-                        key={invoice.id}
-                        href={`/invoices/${invoice.id}`}
-                        className="min-w-[255px] rounded-[22px] border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
-                      >
-                        <div>
-                          <p className="font-semibold text-slate-900">{invoice.invoice_no}</p>
-                          <p className="mt-1 text-sm text-slate-500">{clientLabel}</p>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Collected</p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">
-                            {formatCurrency(paidAmount)} / {formatCurrency(invoice.total_amount)}
-                          </p>
-                          <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getInvoiceStatusClasses(invoice.status)}`}>
-                            {invoice.status || 'Unknown'}
-                          </span>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Outstanding</p>
-                          <p className="mt-1 font-semibold text-amber-700">{formatCurrency(outstanding)}</p>
-                          <p className="mt-1 text-xs text-slate-400">{formatDate(invoice.date)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Overdue / Stuck Tasks"
-                description="Open tasks that have been sitting for 3 or more days."
-                aside={
-                  <div className="text-left md:text-right">
-                    <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Open 3+ Days</p>
-                    <p className="mt-1 text-lg font-semibold text-rose-700">{allOverdueTasks.length}</p>
-                    <p className="text-sm text-slate-500">Needs follow-up</p>
-                  </div>
-                }
-              >
-                {overdueTasks.length === 0 ? (
-                  <div className="px-5 py-8 text-sm text-slate-500">No stuck tasks right now.</div>
-                ) : (
-                  <div className="flex gap-3 overflow-x-auto px-5 py-5">
-                    {overdueTasks.map(({ task, invoice, clientLabel, taskDateValue, ageDays }) => (
-                      <Link
-                        key={task.id}
-                        href={`/invoices/${task.invoice_id}`}
-                        className="min-w-[255px] rounded-[22px] border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
-                      >
-                        <div>
-                          <p className="font-semibold text-slate-900">{task.particulars || 'Untitled task'}</p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {clientLabel} · {invoice?.invoice_no ?? 'Invoice'}
-                          </p>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Assigned To</p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">{task.assigned_to || 'Unassigned'}</p>
-                          <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getTaskStatusClasses(task.status)}`}>
-                            {task.status || 'Pending'}
-                          </span>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Open Since</p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">{formatDate(taskDateValue || task.created_at)}</p>
-                          <p className="mt-1 font-semibold text-rose-700">{getTaskAgeLabel(ageDays)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </DashboardPanel>
-
-              <DashboardPanel
-                title="Department Queue"
-                description="Open operational tasks currently sitting with each department."
-                aside={
-                  <div className="text-left md:text-right">
-                    <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Open Tasks</p>
-                    <p className="mt-1 text-lg font-semibold text-slate-900">{openTasks.length}</p>
-                    <p className="text-sm text-slate-500">{departmentQueue.length} departments</p>
-                  </div>
-                }
-              >
-                {departmentQueue.length === 0 ? (
-                  <div className="px-5 py-8 text-sm text-slate-500">No department queues yet.</div>
-                ) : (
-                  <div className="flex gap-3 overflow-x-auto px-5 py-5">
-                    {departmentQueue.map((department) => (
-                      <Link
-                        key={department.department}
-                        href={`/daily-works?date=${encodeURIComponent(todayDateValue)}&dept=${encodeURIComponent(department.department)}`}
-                        className="min-w-[240px] rounded-[22px] border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
-                      >
-                        <div>
-                          <p className="font-semibold text-slate-900">{department.department}</p>
-                          <p className="mt-1 text-sm text-slate-500">{department.openCount} open tasks</p>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Queue Mix</p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">
-                            {department.pendingCount} pending · {department.onAccountCount} on account
-                          </p>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Outstanding</p>
-                          <p className="mt-1 font-semibold text-slate-900">{formatCurrency(department.outstandingAmount)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </DashboardPanel>
-            </section>
-
-            <section className="grid gap-5 xl:grid-cols-2">
-              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <h2 className="text-lg font-semibold text-slate-900">Latest Invoice</h2>
-                  <p className="text-sm text-slate-500">Recently created invoice entries.</p>
-                </div>
-
-                {latestInvoices.length === 0 ? (
-                  <div className="px-5 py-8 text-sm text-slate-500">No invoices yet.</div>
-                ) : (
-                  <div className="flex gap-3 overflow-x-auto px-5 py-5">
-                    {latestInvoices.map((invoice) => (
-                      <Link
-                        key={invoice.id}
-                        href={`/invoices/${invoice.id}`}
-                        className="min-w-[255px] rounded-[22px] border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
-                      >
-                        <div>
-                          <p className="font-semibold text-slate-900">{invoice.invoice_no}</p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {invoice.client_id ? clientNames.get(invoice.client_id) ?? 'Unknown client' : 'Unknown client'}
-                          </p>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Date</p>
-                          <p className="mt-1 text-sm font-medium text-slate-800">{formatDate(invoice.date)}</p>
-                          <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getInvoiceStatusClasses(invoice.status)}`}>
-                            {invoice.status || 'Unknown'}
-                          </span>
-                        </div>
-                        <div className="mt-3">
-                          <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Amount</p>
-                          <p className="mt-1 font-semibold text-slate-900">{formatCurrency(invoice.total_amount)}</p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <h2 className="text-lg font-semibold text-slate-900">Latest Receipt</h2>
-                  <p className="text-sm text-slate-500">Most recent receipt entries recorded.</p>
-                </div>
-
-                {latestReceipts.length === 0 ? (
-                  <div className="px-5 py-8 text-sm text-slate-500">No receipts yet.</div>
-                ) : (
-                  <div className="flex gap-3 overflow-x-auto px-5 py-5">
-                    {latestReceipts.map((receipt) => {
-                      const relatedInvoice = invoicesById.get(receipt.invoice_id)
-                      const relatedClient =
-                        relatedInvoice?.client_id ? clientNames.get(relatedInvoice.client_id) ?? 'Unknown client' : 'Unknown client'
-
-                      return (
+                  recentApplications.map((app) => (
+                    <tr key={app.id} className="group transition hover:bg-[#161616]">
+                      <td className="py-3 pr-4">
                         <Link
-                          key={receipt.id}
-                          href={`/invoices/${receipt.invoice_id}`}
-                          className="min-w-[255px] rounded-[22px] border border-slate-200 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_14px_28px_rgba(15,23,42,0.08)]"
+                          href={`/invoices/${app.id}`}
+                          className="font-mono text-sm text-teal-400 hover:text-teal-300"
                         >
-                          <div>
-                            <p className="font-semibold text-slate-900">{receipt.receipt_no || 'Receipt entry'}</p>
-                            <p className="mt-1 text-sm text-slate-500">
-                              {relatedInvoice?.invoice_no ?? 'Invoice'} · {relatedClient}
-                            </p>
-                          </div>
-                          <div className="mt-3">
-                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Date</p>
-                            <p className="mt-1 text-sm font-medium text-slate-800">
-                              {formatDate(receipt.date || receipt.created_at)}
-                            </p>
-                          </div>
-                          <div className="mt-3">
-                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Amount</p>
-                            <p className="mt-1 font-semibold text-emerald-700">{formatCurrency(receipt.amount)}</p>
-                          </div>
+                          #{app.ref}
                         </Link>
-                      )
-                    })}
-                  </div>
+                      </td>
+                      <td className="py-3 pr-4 text-sm text-white">{app.client}</td>
+                      <td className="py-3 pr-4 text-sm text-gray-500 hidden md:table-cell">
+                        {app.service}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-xs font-medium ${getStatusClasses(app.status)}`}
+                        >
+                          {app.status ?? 'Unknown'}
+                        </span>
+                      </td>
+                      <td className="py-3 text-sm text-gray-500 hidden sm:table-cell">
+                        {formatDateShort(app.date)}
+                      </td>
+                    </tr>
+                  ))
                 )}
-              </div>
-            </section>
-          </main>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Service Mix */}
+          <div className="rounded-xl border border-[#1e1e1e] bg-[#111111] p-5">
+            <h2 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+              Service Mix ({currentMonthLabel})
+            </h2>
+            <div className="flex justify-center">
+              <DonutChart segments={serviceMix} size={148} />
+            </div>
+            <div className="mt-5 space-y-2.5">
+              {serviceMix.length === 0 ? (
+                <p className="text-center text-xs text-gray-600">No task data yet.</p>
+              ) : (
+                serviceMix.map((s) => (
+                  <div key={s.label} className="flex items-center gap-2 text-xs">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: s.color }}
+                    />
+                    <span className="flex-1 truncate text-gray-400">{s.label}</span>
+                    <span className="shrink-0 text-gray-600">— {s.pct}%</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Bottom grid: Staff Workload + Monthly Revenue + Recent Activity ── */}
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {/* Staff Workload */}
+          <div className="rounded-xl border border-[#1e1e1e] bg-[#111111] p-5">
+            <h2 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+              Staff Workload
+            </h2>
+            <div className="space-y-4">
+              {staffWorkload.length === 0 ? (
+                <p className="text-xs text-gray-600">No open tasks.</p>
+              ) : (
+                staffWorkload.map((s) => (
+                  <div key={s.name} className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1c1c1c] text-xs font-semibold text-gray-300">
+                      {s.initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm text-white">{s.name}</span>
+                        <span className="shrink-0 text-xs text-gray-500">{s.count} tasks</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 w-full rounded-full bg-[#1e1e1e]">
+                        <div
+                          className="h-1.5 rounded-full bg-teal-600"
+                          style={{ width: `${s.pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Monthly Revenue */}
+          <div className="rounded-xl border border-[#1e1e1e] bg-[#111111] p-5">
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+              Monthly Revenue
+            </h2>
+            <p className="mb-4 text-2xl font-bold text-white">
+              {formatCompact(currentMonthRevenue)}
+            </p>
+            <BarChart data={monthlyRevenueData} />
+          </div>
+
+          {/* Recent Activity */}
+          <div className="rounded-xl border border-[#1e1e1e] bg-[#111111] p-5">
+            <h2 className="mb-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+              Recent Activity
+            </h2>
+            <div className="space-y-4">
+              {recentActivity.length === 0 ? (
+                <p className="text-xs text-gray-600">No activity yet.</p>
+              ) : (
+                recentActivity.map((a, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${a.dotColor}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs text-gray-300">{a.text}</p>
+                      <p className="mt-0.5 text-[10px] tabular-nums text-gray-600">{a.time}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Quick access strip ── */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Link
+            href="/invoices?filter=pending-collections"
+            className="flex items-center justify-between rounded-xl border border-[#1e1e1e] bg-[#111111] px-5 py-4 transition hover:border-amber-800/50 hover:bg-[#151515]"
+          >
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.15em] text-gray-600">Pending Collections</p>
+              <p className="mt-1 text-lg font-bold text-white">{pendingItems.length} invoices</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold text-amber-400">{formatCompact(totalOutstanding)}</p>
+              <p className="text-xs text-gray-600">outstanding →</p>
+            </div>
+          </Link>
+
+          <Link
+            href="/daily-works"
+            className="flex items-center justify-between rounded-xl border border-[#1e1e1e] bg-[#111111] px-5 py-4 transition hover:border-teal-800/50 hover:bg-[#151515]"
+          >
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.15em] text-gray-600">Open Tasks</p>
+              <p className="mt-1 text-lg font-bold text-white">{openTasks.length} tasks</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold text-teal-400">Daily Works</p>
+              <p className="text-xs text-gray-600">view worksheet →</p>
+            </div>
+          </Link>
         </div>
       </div>
     </div>

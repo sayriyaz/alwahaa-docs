@@ -103,7 +103,7 @@ type ReceiptForm = {
   notes: string
 }
 
-type SupabaseErrorLike = {
+type SupabaseErrorShape = {
   message?: string
   details?: string | null
   hint?: string | null
@@ -177,13 +177,14 @@ function getStatusClasses(status: string | null) {
   }
 }
 
-function formatSupabaseError(error: SupabaseErrorLike | null, fallbackMessage: string) {
+function formatSupabaseError(error: SupabaseErrorShape | null, fallbackMessage: string) {
   if (!error) {
     return fallbackMessage
   }
 
   const extra = [error.details, error.hint].filter(Boolean).join(' ')
-  return extra ? `${error.message ?? fallbackMessage} ${extra}` : (error.message ?? fallbackMessage)
+  const msg = error.message ?? fallbackMessage
+  return extra ? `${msg} ${extra}` : msg
 }
 
 function sortReceipts(receipts: InvoiceReceipt[]) {
@@ -585,7 +586,7 @@ export default function InvoiceDetailClient({
       const { data, error } = await saveInvoiceTask(taskPayload, supabase, editingTaskId)
 
       if (error || !data) {
-        setPageError(formatSupabaseError(error, 'Unable to save the task right now.'))
+        setPageError(formatSupabaseError(error as SupabaseErrorShape | null, 'Unable to save the task right now.'))
         return
       }
 
