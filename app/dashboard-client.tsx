@@ -150,6 +150,7 @@ function DonutChart({
     )
   }
 
+  const r4 = (n: number) => Math.round(n * 1e4) / 1e4
   let angle = -Math.PI / 2
   const paths: Array<{ d: string; color: string }> = []
   for (const seg of segments) {
@@ -157,14 +158,14 @@ function DonutChart({
     const ratio = seg.value / total
     const end = angle + ratio * 2 * Math.PI
     const la = ratio > 0.5 ? 1 : 0
-    const x1 = cx + outerR * Math.cos(angle)
-    const y1 = cy + outerR * Math.sin(angle)
-    const x2 = cx + outerR * Math.cos(end)
-    const y2 = cy + outerR * Math.sin(end)
-    const ix1 = cx + innerR * Math.cos(end)
-    const iy1 = cy + innerR * Math.sin(end)
-    const ix2 = cx + innerR * Math.cos(angle)
-    const iy2 = cy + innerR * Math.sin(angle)
+    const x1 = r4(cx + outerR * Math.cos(angle))
+    const y1 = r4(cy + outerR * Math.sin(angle))
+    const x2 = r4(cx + outerR * Math.cos(end))
+    const y2 = r4(cy + outerR * Math.sin(end))
+    const ix1 = r4(cx + innerR * Math.cos(end))
+    const iy1 = r4(cy + innerR * Math.sin(end))
+    const ix2 = r4(cx + innerR * Math.cos(angle))
+    const iy2 = r4(cy + innerR * Math.sin(angle))
     paths.push({
       d: `M ${x1} ${y1} A ${outerR} ${outerR} 0 ${la} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${innerR} ${innerR} 0 ${la} 0 ${ix2} ${iy2} Z`,
       color: seg.color,
