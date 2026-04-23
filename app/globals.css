@@ -297,6 +297,88 @@ html[data-theme='dark'] .text-slate-900 {
   color: #f3f4f6 !important;
 }
 
+/* ─── Worksheet canvas always stays light (printable document) ───────────── */
+
+html[data-theme='dark'] .worksheet-canvas {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='dark'] .worksheet-canvas td,
+html[data-theme='dark'] .worksheet-canvas th,
+html[data-theme='dark'] .worksheet-canvas tr {
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  background-color: transparent;
+}
+
+html[data-theme='dark'] .worksheet-canvas .bg-white,
+html[data-theme='dark'] .worksheet-canvas [class~='bg-white'] {
+  background-color: #ffffff !important;
+}
+
+html[data-theme='dark'] .worksheet-canvas .bg-gray-50,
+html[data-theme='dark'] .worksheet-canvas .bg-slate-50,
+html[data-theme='dark'] .worksheet-canvas .bg-slate-100 {
+  background-color: #f1f5f9 !important;
+}
+
+html[data-theme='dark'] .worksheet-canvas .text-gray-900,
+html[data-theme='dark'] .worksheet-canvas .text-slate-900,
+html[data-theme='dark'] .worksheet-canvas .text-slate-800,
+html[data-theme='dark'] .worksheet-canvas .text-slate-700,
+html[data-theme='dark'] .worksheet-canvas .text-gray-700,
+html[data-theme='dark'] .worksheet-canvas .text-slate-600,
+html[data-theme='dark'] .worksheet-canvas .text-gray-600,
+html[data-theme='dark'] .worksheet-canvas .text-slate-500,
+html[data-theme='dark'] .worksheet-canvas .text-gray-500,
+html[data-theme='dark'] .worksheet-canvas .text-slate-400,
+html[data-theme='dark'] .worksheet-canvas .text-gray-400 {
+  color: #475569 !important;
+}
+
+html[data-theme='dark'] .worksheet-canvas .border,
+html[data-theme='dark'] .worksheet-canvas .border-b,
+html[data-theme='dark'] .worksheet-canvas .border-t,
+html[data-theme='dark'] .worksheet-canvas .border-slate-300,
+html[data-theme='dark'] .worksheet-canvas .border-slate-400 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Restore original dept row colours inside worksheet */
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#fdebd1\] { background-color: #fdebd1 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#f8e6c7\] { background-color: #f8e6c7 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#f6efd2\] { background-color: #f6efd2 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#eef1c9\] { background-color: #eef1c9 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#dff0cf\] { background-color: #dff0cf !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#d8efc2\] { background-color: #d8efc2 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#d4ebc8\] { background-color: #d4ebc8 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#e2e8d6\] { background-color: #e2e8d6 !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#ece3cf\] { background-color: #ece3cf !important; }
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#eef1f5\] { background-color: #eef1f5 !important; }
+
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#f9dfb3\]:hover { background-color: #f9dfb3 !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#f0d6a5\]:hover { background-color: #f0d6a5 !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#ede2b4\]:hover { background-color: #ede2b4 !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#e4e8a6\]:hover { background-color: #e4e8a6 !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#d0e7b6\]:hover { background-color: #d0e7b6 !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#c8e4ab\]:hover { background-color: #c8e4ab !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#c2dfb3\]:hover { background-color: #c2dfb3 !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#d7deca\]:hover { background-color: #d7deca !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#e0d4bb\]:hover { background-color: #e0d4bb !important; }
+html[data-theme='dark'] .worksheet-canvas .hover\:bg-\[\#e4e7ec\]:hover { background-color: #e4e7ec !important; }
+
+/* Worksheet blue header stays visible */
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#274a71\] {
+  background-color: #274a71 !important;
+}
+
+html[data-theme='dark'] .worksheet-canvas input {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
 /* ─── Print always light ─────────────────────────────────────────────────── */
 
 @media print {
