@@ -1,6 +1,7 @@
 'use client'
 
 import { startTransition, useEffect, useState, type ReactNode } from 'react'
+import { useAppTheme } from '@/components/app-theme-provider'
 import type {
   AttendanceStatusCode,
   AttendanceTrackedStaff,
@@ -143,7 +144,20 @@ function getSummaryToneClasses(code: AttendanceStatusCode) {
   }
 }
 
-function getDailyCardClasses(code: AttendanceStatusCode | null) {
+function getDailyCardClasses(code: AttendanceStatusCode | null, isDark: boolean) {
+  if (isDark) {
+    switch (code) {
+      case 'A':
+        return 'border-rose-950/70 bg-[linear-gradient(180deg,#1b0c11_0%,#11070b_100%)]'
+      case 'MP':
+        return 'border-amber-950/70 bg-[linear-gradient(180deg,#1c1308_0%,#120b05_100%)]'
+      case 'PN':
+        return 'border-yellow-950/70 bg-[linear-gradient(180deg,#1b1808_0%,#120f05_100%)]'
+      default:
+        return 'border-zinc-800 bg-[linear-gradient(180deg,#111111_0%,#0b0b0b_100%)]'
+    }
+  }
+
   switch (code) {
     case 'A':
       return 'border-rose-200 bg-[linear-gradient(180deg,#fff7f7_0%,#fff1f2_100%)]'
@@ -163,9 +177,14 @@ function Surface({
   children: ReactNode
   className?: string
 }) {
+  const { isDark } = useAppTheme()
   return (
     <section
-      className={`attendance-panel overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${className}`}
+      className={`attendance-panel overflow-hidden rounded-[28px] border shadow-[0_18px_45px_rgba(15,23,42,0.05)] ${
+        isDark
+          ? 'border-zinc-800 bg-[#0b0b0b]'
+          : 'border-slate-200 bg-white'
+      } ${className}`}
     >
       {children}
     </section>
@@ -251,6 +270,7 @@ export default function AttendancePageClient({
   initialView: AttendanceView
   trackedStaff: AttendanceTrackedStaff[]
 }) {
+  const { isDark } = useAppTheme()
   const [view, setView] = useState<AttendanceView>(initialView)
   const [selectedDate, setSelectedDate] = useState(initialDailyData?.date ?? initialDate)
   const [selectedMonth, setSelectedMonth] = useState(initialMonthlyData?.month ?? initialMonth)
@@ -446,9 +466,15 @@ export default function AttendancePageClient({
         }
       `}</style>
 
-      <div className="min-h-screen bg-[#edf3f8] text-slate-950">
+      <div className={`min-h-screen ${isDark ? 'bg-[#050505] text-slate-100' : 'bg-[#edf3f8] text-slate-950'}`}>
         <div className="attendance-background pointer-events-none fixed inset-0 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_15%,rgba(14,165,233,0.08),transparent_20%),radial-gradient(circle_at_85%_12%,rgba(34,197,94,0.08),transparent_18%),linear-gradient(180deg,#f8fbfd_0%,#edf3f8_45%,#e8eff5_100%)]" />
+          <div
+            className={`absolute inset-0 ${
+              isDark
+                ? 'bg-[radial-gradient(circle_at_10%_15%,rgba(64,64,64,0.22),transparent_18%),radial-gradient(circle_at_85%_12%,rgba(24,24,27,0.28),transparent_20%),linear-gradient(180deg,#141414_0%,#080808_52%,#050505_100%)]'
+                : 'bg-[radial-gradient(circle_at_10%_15%,rgba(14,165,233,0.08),transparent_20%),radial-gradient(circle_at_85%_12%,rgba(34,197,94,0.08),transparent_18%),linear-gradient(180deg,#f8fbfd_0%,#edf3f8_45%,#e8eff5_100%)]'
+            }`}
+          />
         </div>
 
         <div className="attendance-shell relative mx-auto max-w-[1520px] px-4 py-5 lg:px-6 lg:py-6">
@@ -599,7 +625,7 @@ export default function AttendancePageClient({
                     dailyTableRows.map((entry) => (
                       <article
                         key={`${entry.deviceUserId}-${selectedDate}`}
-                        className={`rounded-[26px] border px-4 py-4 transition duration-200 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(15,23,42,0.08)] ${getDailyCardClasses(entry.statusCode)}`}
+                        className={`rounded-[26px] border px-4 py-4 transition duration-200 hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(15,23,42,0.08)] ${getDailyCardClasses(entry.statusCode, isDark)}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">

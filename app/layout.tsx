@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import AppNavbar from '@/components/app-navbar'
+import { AppThemeProvider } from '@/components/app-theme-provider'
 import AuthSessionSync from '@/components/auth-session-sync'
 import { ToastProvider } from '@/components/ui/toast'
 
@@ -15,13 +16,20 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
-      <body className="flex min-h-full flex-col">
-        <ToastProvider>
-          <AuthSessionSync />
-          <AppNavbar />
-          {children}
-        </ToastProvider>
+    <html
+      lang="en"
+      className="h-full antialiased"
+      data-theme="dark"
+      suppressHydrationWarning
+    >
+      <body className="flex min-h-full flex-col" data-theme="dark">
+        <AppThemeProvider>
+          <ToastProvider>
+            <AuthSessionSync />
+            <AppNavbar />
+            {children}
+          </ToastProvider>
+        </AppThemeProvider>
       </body>
     </html>
   )

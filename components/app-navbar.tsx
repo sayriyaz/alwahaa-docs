@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { useAppTheme } from '@/components/app-theme-provider'
 import { supabase } from '@/lib/supabase'
 import { syncServerSession } from '@/lib/auth-client'
 import type { AppRole } from '@/lib/auth-constants'
@@ -65,6 +66,7 @@ function shouldHide(pathname: string) {
 export default function AppNavbar() {
   const pathname = usePathname()
   const router = useRouter()
+  const { isDark, toggleTheme } = useAppTheme()
   const [appUser, setAppUser] = useState<AppUser | null>(null)
   const [attendanceStatus, setAttendanceStatus] = useState<AttendanceStatusCode>(null)
   const [signingOut, setSigningOut] = useState(false)
@@ -122,7 +124,13 @@ export default function AppNavbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-md">
+    <header
+      className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors ${
+        isDark
+          ? 'border-slate-800 bg-slate-950/90'
+          : 'border-slate-200 bg-white/90'
+      }`}
+    >
       <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-3 lg:px-6">
 
         {/* Brand */}
@@ -131,8 +139,8 @@ export default function AppNavbar() {
             <Image src={alWahaaLogo} alt="Al Wahaa Group" fill sizes="36px" className="object-contain p-1" priority />
           </div>
           <div className="hidden sm:block">
-            <p className="text-[0.6rem] uppercase tracking-[0.26em] text-amber-700 leading-none">Al Wahaa Group</p>
-            <p className="text-sm font-semibold tracking-tight text-slate-900 leading-tight">Alwahaa Documents</p>
+            <p className={`text-[0.6rem] uppercase tracking-[0.26em] leading-none ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Al Wahaa Group</p>
+            <p className={`text-sm font-semibold tracking-tight leading-tight ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Alwahaa Documents</p>
           </div>
         </Link>
 
@@ -145,7 +153,9 @@ export default function AppNavbar() {
               className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                 isActive(link.href)
                   ? 'bg-slate-900 text-white shadow-[0_4px_14px_rgba(15,23,42,0.20)]'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  : isDark
+                    ? 'text-slate-300 hover:bg-slate-900 hover:text-white'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               {link.label}
@@ -155,11 +165,28 @@ export default function AppNavbar() {
 
         {/* User avatar + dropdown */}
         <div className="relative flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={`hidden rounded-full border px-3 py-1.5 text-xs font-medium transition md:inline-flex ${
+              isDark
+                ? 'border-slate-700 text-slate-300 hover:border-slate-600 hover:bg-slate-900 hover:text-white'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+            aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+          >
+            {isDark ? '☀ Light' : '☾ Dark'}
+          </button>
+
           {/* Mobile menu toggle */}
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 md:hidden"
+            className={`flex h-8 w-8 items-center justify-center rounded-full border md:hidden ${
+              isDark
+                ? 'border-slate-700 text-slate-300 hover:bg-slate-900'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
             aria-label="Menu"
           >
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -221,8 +248,19 @@ export default function AppNavbar() {
 
       {/* Mobile nav drawer */}
       {menuOpen && (
-        <div className="border-t border-slate-100 bg-white px-4 pb-4 md:hidden">
+        <div className={`border-t px-4 pb-4 md:hidden ${isDark ? 'border-slate-800 bg-slate-950' : 'border-slate-100 bg-white'}`}>
           <nav className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                isDark
+                  ? 'border border-slate-700 text-slate-300 hover:bg-slate-900'
+                  : 'border border-slate-200 text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              {isDark ? '☀ Light' : '☾ Dark'}
+            </button>
             {visibleLinks.map((link) => (
               <Link
                 key={link.href}
@@ -231,7 +269,9 @@ export default function AppNavbar() {
                 className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
                   isActive(link.href)
                     ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 text-slate-600 hover:border-slate-300'
+                    : isDark
+                      ? 'border border-slate-700 text-slate-300 hover:bg-slate-900'
+                      : 'border border-slate-200 text-slate-600 hover:border-slate-300'
                 }`}
               >
                 {link.label}

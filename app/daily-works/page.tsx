@@ -20,6 +20,7 @@ export default async function DailyWorksPage({
   const selectedDate = normalizeDailyWorksDate(getSearchParam(resolvedSearchParams.date) ?? null)
   const selectedAssignee = getSearchParam(resolvedSearchParams.assignee)?.trim() ?? ''
   const selectedDepartment = getSearchParam(resolvedSearchParams.dept)?.trim() ?? ''
+  const selectedStatus = getSearchParam(resolvedSearchParams.status)?.trim() === 'open' ? 'open' : ''
   const result = await getDailyWorks(selectedDate, db)
   const currentUserLabel = appUser.full_name?.trim() || appUser.email
   const reviewedByLabel = appUser.role === 'admin' ? currentUserLabel : 'Pending review'
@@ -30,6 +31,7 @@ export default async function DailyWorksPage({
       initialItems={result.data}
       initialAssigneeFilter={selectedAssignee}
       initialDepartmentFilter={selectedDepartment}
+      initialStatusFilter={selectedStatus}
       preparedByLabel={currentUserLabel}
       reviewedByLabel={reviewedByLabel}
     />

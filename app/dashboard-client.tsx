@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import { useAppTheme } from '@/components/app-theme-provider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ export type DashboardData = {
   totalBilled: number
   totalCollected: number
   staffDetails: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
+  todayOpenTaskCount: number
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -131,7 +133,7 @@ function DonutChart({
   size = 140,
   holeColor,
 }: {
-  segments: Array<{ label: string; value: number; color: string }>
+  segments: Array<{ label: string; value: number; color: string; pct?: number }>
   size?: number
   holeColor: string
 }) {
@@ -152,7 +154,7 @@ function DonutChart({
 
   const r4 = (n: number) => Math.round(n * 1e4) / 1e4
   let angle = -Math.PI / 2
-  const paths: Array<{ d: string; color: string }> = []
+  const paths: Array<{ d: string; color: string; title: string }> = []
   for (const seg of segments) {
     if (seg.value <= 0) continue
     const ratio = seg.value / total
@@ -169,6 +171,7 @@ function DonutChart({
     paths.push({
       d: `M ${x1} ${y1} A ${outerR} ${outerR} 0 ${la} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${innerR} ${innerR} 0 ${la} 0 ${ix2} ${iy2} Z`,
       color: seg.color,
+      title: `${seg.label}${seg.pct != null ? ` - ${seg.pct}%` : ''} (${seg.value} tasks)`,
     })
     angle = end
   }
@@ -176,7 +179,9 @@ function DonutChart({
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {paths.map((p, i) => (
-        <path key={i} d={p.d} fill={p.color} />
+        <path key={i} d={p.d} fill={p.color} className="transition-opacity hover:opacity-85">
+          <title>{p.title}</title>
+        </path>
       ))}
       <circle cx={cx} cy={cy} r={innerR} fill={holeColor} />
     </svg>
@@ -274,8 +279,6 @@ function OverviewTab({ d, isDark, cs }: { d: DashboardData; isDark: boolean; cs:
     d.prevMonthRevenue > 0
       ? ((d.currentMonthRevenue - d.prevMonthRevenue) / d.prevMonthRevenue) * 100
       : 0
-
-  const totalOpenTasks = d.staffWorkload.reduce((s, x) => s + x.count, 0)
 
   return (
     <>
@@ -393,7 +396,11 @@ function OverviewTab({ d, isDark, cs }: { d: DashboardData; isDark: boolean; cs:
               <p className={`text-center text-xs ${cs.textMuted}`}>No task data yet.</p>
             ) : (
               d.serviceMix.map((s) => (
-                <div key={s.label} className="flex items-center gap-2 text-xs">
+                <div
+                  key={s.label}
+                  className="flex items-center gap-2 text-xs transition hover:translate-x-0.5"
+                  title={`${s.label} - ${s.pct}% (${s.value} tasks)`}
+                >
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: s.color }}
@@ -477,7 +484,7 @@ function OverviewTab({ d, isDark, cs }: { d: DashboardData; isDark: boolean; cs:
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link
-          href="/invoices"
+          href="/invoices?filter=pending-collections"
           className={`flex items-center justify-between rounded-xl border ${cs.cardBorder} ${cs.cardBg} px-5 py-4 transition hover:border-amber-500/30`}
         >
           <div>
@@ -488,20 +495,20 @@ function OverviewTab({ d, isDark, cs }: { d: DashboardData; isDark: boolean; cs:
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-amber-400">{formatCompact(d.totalOutstanding)}</p>
-            <p className={`text-xs ${cs.textMuted}`}>outstanding →</p>
+            <p className={`text-xs ${cs.textMuted}`}>unpaid invoices →</p>
           </div>
         </Link>
         <Link
-          href="/daily-works"
+          href="/daily-works?status=open"
           className={`flex items-center justify-between rounded-xl border ${cs.cardBorder} ${cs.cardBg} px-5 py-4 transition hover:border-teal-500/30`}
         >
           <div>
             <p className={`text-[10px] uppercase tracking-[0.15em] ${cs.textMuted}`}>Open Tasks</p>
-            <p className={`mt-1 text-lg font-bold ${cs.text}`}>{totalOpenTasks} tasks</p>
+            <p className={`mt-1 text-lg font-bold ${cs.text}`}>{d.todayOpenTaskCount} tasks</p>
           </div>
           <div className="text-right">
             <p className="text-sm font-semibold text-teal-400">Daily Works</p>
-            <p className={`text-xs ${cs.textMuted}`}>view worksheet →</p>
+            <p className={`text-xs ${cs.textMuted}`}>open tasks →</p>
           </div>
         </Link>
       </div>
@@ -781,24 +788,7 @@ type Tab = (typeof TABS)[number]
 
 export default function DashboardClient({ data }: { data: DashboardData }) {
   const [tab, setTab] = useState<Tab>('Overview')
-  const [isDark, setIsDark] = useState(true)
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('ops-theme')
-      if (saved === 'light') setIsDark(false)
-    } catch {}
-  }, [])
-
-  function toggleTheme() {
-    setIsDark((prev) => {
-      const next = !prev
-      try {
-        localStorage.setItem('ops-theme', next ? 'dark' : 'light')
-      } catch {}
-      return next
-    })
-  }
+  const { isDark } = useAppTheme()
 
   const cs = isDark ? D : L
 
@@ -819,20 +809,12 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              className={`rounded-full border px-3 py-1.5 text-[11px] transition ${cs.themeBtn}`}
-            >
-              {isDark ? '☀ Light' : '☾ Dark'}
-            </button>
-            <div className={`rounded-full border px-3 py-1.5 text-[11px] tabular-nums ${cs.clockBg}`}>
-              {new Date().toLocaleDateString('en-GB', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-              })}
-            </div>
+          <div className={`rounded-full border px-3 py-1.5 text-[11px] tabular-nums ${cs.clockBg}`}>
+            {new Date().toLocaleDateString('en-GB', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            })}
           </div>
         </div>
       </header>

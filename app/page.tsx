@@ -42,6 +42,12 @@ function mkInitials(name: string) {
     .toUpperCase()
 }
 
+function getTodayDateValue() {
+  const now = new Date()
+  const localTime = new Date(now.getTime() - (now.getTimezoneOffset() * 60_000))
+  return localTime.toISOString().slice(0, 10)
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function Home() {
@@ -143,6 +149,8 @@ export default async function Home() {
 
   // ── Staff workload (open tasks only) ──
   const openTasks = tasks.filter((t) => (t.status ?? 'Pending') !== 'Done')
+  const todayDate = getTodayDateValue()
+  const todayOpenTaskCount = openTasks.filter((t) => (t.created_at ?? '').slice(0, 10) === todayDate).length
   const workloadMap = new Map<string, number>()
   for (const t of openTasks) {
     const name = t.assigned_to?.trim() || 'Unassigned'
@@ -268,6 +276,7 @@ export default async function Home() {
     totalBilled,
     totalCollected,
     staffDetails,
+    todayOpenTaskCount,
   }
 
   return <DashboardClient data={dashData} />

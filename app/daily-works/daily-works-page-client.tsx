@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { startTransition, useState } from 'react'
+import { useAppTheme } from '@/components/app-theme-provider'
 import type { DailyWorkItem } from '@/lib/daily-works'
 
 type ApiPayload = {
@@ -189,6 +190,7 @@ export default function DailyWorksPageClient({
   initialItems,
   initialAssigneeFilter,
   initialDepartmentFilter,
+  initialStatusFilter,
   preparedByLabel,
   reviewedByLabel,
 }: {
@@ -196,18 +198,22 @@ export default function DailyWorksPageClient({
   initialItems: DailyWorkItem[]
   initialAssigneeFilter: string
   initialDepartmentFilter: string
+  initialStatusFilter: '' | 'open'
   preparedByLabel: string
   reviewedByLabel: string
 }) {
+  const { isDark } = useAppTheme()
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [items, setItems] = useState(initialItems)
   const [assigneeFilter, setAssigneeFilter] = useState(initialAssigneeFilter)
   const [departmentFilter, setDepartmentFilter] = useState(initialDepartmentFilter)
+  const [statusFilter, setStatusFilter] = useState<'' | 'open'>(initialStatusFilter)
   const [loading, setLoading] = useState(false)
   const [pageError, setPageError] = useState('')
 
   const filteredItems = sortDailyWorks(
     items.filter((item) =>
+      (!statusFilter || (item.status ?? 'Pending') !== 'Done') &&
       (!assigneeFilter || getAssigneeLabel(item.assigned_to) === assigneeFilter) &&
       (!departmentFilter || (item.dept ?? 'OTHER') === departmentFilter)
     )
@@ -317,11 +323,21 @@ export default function DailyWorksPageClient({
         }
       `}</style>
 
-      <div className="print-root min-h-screen bg-[radial-gradient(circle_at_top,#f8fbff_0%,#eef3fb_40%,#e5edf9_100%)]">
+      <div
+        className={`print-root min-h-screen ${
+          isDark
+            ? 'bg-[radial-gradient(circle_at_top,#1f1f1f_0%,#0d0d0d_34%,#050505_100%)] text-slate-100'
+            : 'bg-[radial-gradient(circle_at_top,#f8fbff_0%,#eef3fb_40%,#e5edf9_100%)]'
+        }`}
+      >
       <div className="print-shell mx-auto max-w-[1480px] px-3 py-4 lg:px-5 lg:py-5">
-        <div className="no-print mb-4 flex flex-col gap-3 rounded-[26px] border border-white/80 bg-white/75 px-4 py-4 shadow-[0_26px_70px_rgba(15,23,42,0.08)] backdrop-blur lg:flex-row lg:items-center lg:justify-between">
+        <div className={`no-print mb-4 flex flex-col gap-3 rounded-[26px] border px-4 py-4 shadow-[0_26px_70px_rgba(15,23,42,0.08)] backdrop-blur lg:flex-row lg:items-center lg:justify-between ${
+          isDark
+            ? 'border-zinc-800/90 bg-black/70'
+            : 'border-white/80 bg-white/75'
+        }`}>
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">Daily Works</h1>
+            <h1 className={`text-xl font-semibold tracking-tight ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Daily Works</h1>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -337,14 +353,15 @@ export default function DailyWorksPageClient({
             <div className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600">
               {loading
                 ? 'Loading worksheet…'
-                : `${filteredItems.length} tasks · ${pendingCount} pending${assigneeFilter ? ` · ${assigneeFilter}` : ''}${departmentFilter ? ` · ${departmentFilter}` : ''}`}
+                : `${filteredItems.length} tasks${statusFilter ? ' · open only' : ''} · ${pendingCount} pending${assigneeFilter ? ` · ${assigneeFilter}` : ''}${departmentFilter ? ` · ${departmentFilter}` : ''}`}
             </div>
-            {assigneeFilter || departmentFilter ? (
+            {assigneeFilter || departmentFilter || statusFilter ? (
               <button
                 type="button"
                 onClick={() => {
                   setAssigneeFilter('')
                   setDepartmentFilter('')
+                  setStatusFilter('')
                 }}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
               >
@@ -367,10 +384,11 @@ export default function DailyWorksPageClient({
           </div>
         ) : null}
 
-        {assigneeFilter || departmentFilter ? (
+        {assigneeFilter || departmentFilter || statusFilter ? (
           <div className="no-print mb-4 flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
             <span>
               Showing tasks
+              {statusFilter ? <> that are <strong>still open</strong></> : null}
               {assigneeFilter ? <> for <strong>{assigneeFilter}</strong></> : null}
               {departmentFilter ? <> in <strong>{departmentFilter}</strong></> : null}
               {' '}on {formatWorksheetDate(selectedDate)}.
@@ -380,6 +398,7 @@ export default function DailyWorksPageClient({
               onClick={() => {
                 setAssigneeFilter('')
                 setDepartmentFilter('')
+                setStatusFilter('')
               }}
               className="font-medium text-blue-700 hover:text-blue-900"
             >
@@ -474,7 +493,7 @@ export default function DailyWorksPageClient({
 
               {filteredItems.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-slate-500">
-                  No daily tasks were found for {formatWorksheetDate(selectedDate)}
+                  No {statusFilter ? 'open ' : 'daily '}tasks were found for {formatWorksheetDate(selectedDate)}
                   {assigneeFilter ? ` for ${assigneeFilter}` : ''}
                   {departmentFilter ? `${assigneeFilter ? ' in' : ' for'} ${departmentFilter}` : ''}.
                 </div>
