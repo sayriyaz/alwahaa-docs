@@ -648,18 +648,14 @@ export default function AttendancePageClient({
                         </div>
 
                         <div className="mt-4 grid grid-cols-3 gap-3">
-                          <div className="rounded-2xl border border-white/70 bg-white/70 px-3 py-3 backdrop-blur-sm">
-                            <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">First In</p>
-                            <p className="mt-2 font-mono text-lg text-slate-950">{entry.firstPunch ?? '--:--'}</p>
-                          </div>
-                          <div className="rounded-2xl border border-white/70 bg-white/70 px-3 py-3 backdrop-blur-sm">
-                            <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">Last Out</p>
-                            <p className="mt-2 font-mono text-lg text-slate-950">{entry.lastPunch ?? '--:--'}</p>
-                          </div>
-                          <div className="rounded-2xl border border-white/70 bg-white/70 px-3 py-3 backdrop-blur-sm">
-                            <p className="text-[0.65rem] uppercase tracking-[0.16em] text-slate-500">Punches</p>
-                            <p className="mt-2 font-mono text-lg text-slate-950">{entry.punchCount}</p>
-                          </div>
+                          {(['First In', 'Last Out', 'Punches'] as const).map((label, i) => (
+                            <div key={label} className={`rounded-2xl border px-3 py-3 backdrop-blur-sm ${isDark ? 'border-white/10 bg-white/5' : 'border-white/70 bg-white/70'}`}>
+                              <p className={`text-[0.65rem] uppercase tracking-[0.16em] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{label}</p>
+                              <p className={`mt-2 font-mono text-lg ${isDark ? 'text-slate-100' : 'text-slate-950'}`}>
+                                {i === 0 ? (entry.firstPunch ?? '--:--') : i === 1 ? (entry.lastPunch ?? '--:--') : entry.punchCount}
+                              </p>
+                            </div>
+                          ))}
                         </div>
 
                         {entry.statusCode === 'A' ? (

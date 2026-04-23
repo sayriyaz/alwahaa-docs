@@ -325,16 +325,23 @@ html[data-theme='dark'] .worksheet-canvas .bg-slate-100 {
 
 html[data-theme='dark'] .worksheet-canvas .text-gray-900,
 html[data-theme='dark'] .worksheet-canvas .text-slate-900,
-html[data-theme='dark'] .worksheet-canvas .text-slate-800,
+html[data-theme='dark'] .worksheet-canvas .text-slate-800 {
+  color: #0f172a !important;
+}
 html[data-theme='dark'] .worksheet-canvas .text-slate-700,
 html[data-theme='dark'] .worksheet-canvas .text-gray-700,
 html[data-theme='dark'] .worksheet-canvas .text-slate-600,
-html[data-theme='dark'] .worksheet-canvas .text-gray-600,
+html[data-theme='dark'] .worksheet-canvas .text-gray-600 {
+  color: #1e293b !important;
+}
 html[data-theme='dark'] .worksheet-canvas .text-slate-500,
 html[data-theme='dark'] .worksheet-canvas .text-gray-500,
 html[data-theme='dark'] .worksheet-canvas .text-slate-400,
 html[data-theme='dark'] .worksheet-canvas .text-gray-400 {
-  color: #475569 !important;
+  color: #334155 !important;
+}
+html[data-theme='dark'] .worksheet-canvas .bg-\[\#d8dfef\] {
+  background-color: #d8dfef !important;
 }
 
 html[data-theme='dark'] .worksheet-canvas .border,
