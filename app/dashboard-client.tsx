@@ -29,7 +29,9 @@ export type DashboardData = {
   totalBilled: number
   totalCollected: number
   staffDetails: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
-  todayOpenTaskCount: number
+  staffDetailsThisMonth: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
+  staffDetailsThisWeek: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
+  allOpenTaskCount: number
 }
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -499,15 +501,15 @@ function OverviewTab({ d, isDark, cs }: { d: DashboardData; isDark: boolean; cs:
           </div>
         </Link>
         <Link
-          href="/daily-works?status=open"
+          href="/tasks?status=open"
           className={`flex items-center justify-between rounded-xl border ${cs.cardBorder} ${cs.cardBg} px-5 py-4 transition hover:border-teal-500/30`}
         >
           <div>
             <p className={`text-[10px] uppercase tracking-[0.15em] ${cs.textMuted}`}>Open Tasks</p>
-            <p className={`mt-1 text-lg font-bold ${cs.text}`}>{d.todayOpenTaskCount} tasks</p>
+            <p className={`mt-1 text-lg font-bold ${cs.text}`}>{d.allOpenTaskCount} tasks</p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-semibold text-teal-400">Daily Works</p>
+            <p className="text-sm font-semibold text-teal-400">All Tasks</p>
             <p className={`text-xs ${cs.textMuted}`}>open tasks →</p>
           </div>
         </Link>
@@ -730,53 +732,91 @@ function FinanceTab({ d, cs }: { d: DashboardData; cs: CS }) {
 
 // ─── Staff Tab ────────────────────────────────────────────────────────────────
 
+type StaffPeriod = 'all' | 'month' | 'week'
+
 function StaffTab({ d, cs }: { d: DashboardData; cs: CS }) {
+  const [period, setPeriod] = useState<StaffPeriod>('all')
+
+  const list =
+    period === 'week' ? d.staffDetailsThisWeek
+    : period === 'month' ? d.staffDetailsThisMonth
+    : d.staffDetails
+
+  const periods: { key: StaffPeriod; label: string }[] = [
+    { key: 'all', label: 'All time' },
+    { key: 'month', label: 'This month' },
+    { key: 'week', label: 'This week' },
+  ]
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {d.staffDetails.length === 0 ? (
-        <p className={`text-sm ${cs.textMuted}`}>No staff task data.</p>
-      ) : (
-        d.staffDetails.map((s) => (
-          <div key={s.name} className={`rounded-xl border ${cs.cardBorder} ${cs.cardBg} p-5`}>
-            <div className="flex items-center gap-3 mb-4">
-              <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
-                style={{ backgroundColor: s.color }}
-              >
-                {s.initials}
-              </div>
-              <div className="min-w-0">
-                <p className={`text-sm font-semibold truncate ${cs.text}`}>{s.name}</p>
-                <p className={`text-xs truncate ${cs.textSub}`}>
-                  {s.depts.length > 0 ? s.depts.join(', ') : 'No dept'}
-                </p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div>
-                <p className={`text-xl font-bold ${cs.text}`}>{s.totalTasks}</p>
-                <p className={`text-[10px] uppercase tracking-[0.1em] ${cs.textMuted}`}>Total</p>
-              </div>
-              <div>
-                <p className="text-xl font-bold text-amber-400">{s.openTasks}</p>
-                <p className={`text-[10px] uppercase tracking-[0.1em] ${cs.textMuted}`}>Open</p>
-              </div>
-              <div>
-                <p className="text-xl font-bold text-green-500">{s.doneTasks}</p>
-                <p className={`text-[10px] uppercase tracking-[0.1em] ${cs.textMuted}`}>Done</p>
-              </div>
-            </div>
-            {s.totalTasks > 0 && (
-              <div className={`mt-4 h-1.5 w-full rounded-full ${cs.progressBg}`}>
+    <div>
+      <div className="mb-4 flex gap-2">
+        {periods.map((p) => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => setPeriod(p.key)}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition ${
+              period === p.key
+                ? 'bg-slate-900 text-white shadow-sm'
+                : `border ${cs.cardBorder} ${cs.textMuted} hover:${cs.text}`
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {list.length === 0 ? (
+          <p className={`text-sm ${cs.textMuted}`}>No task data for this period.</p>
+        ) : (
+          list.map((s) => (
+            <Link
+              key={s.name}
+              href={s.name === 'Unassigned' ? '/tasks' : `/tasks?assignee=${encodeURIComponent(s.name)}`}
+              className={`block rounded-xl border ${cs.cardBorder} ${cs.cardBg} p-5 transition hover:-translate-y-0.5 hover:shadow-md`}
+            >
+              <div className="flex items-center gap-3 mb-4">
                 <div
-                  className="h-1.5 rounded-full bg-green-500"
-                  style={{ width: `${(s.doneTasks / s.totalTasks) * 100}%` }}
-                />
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                  style={{ backgroundColor: s.color }}
+                >
+                  {s.initials}
+                </div>
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold truncate ${cs.text}`}>{s.name}</p>
+                  <p className={`text-xs truncate ${cs.textSub}`}>
+                    {s.depts.length > 0 ? s.depts.join(', ') : 'No dept'}
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
-        ))
-      )}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className={`text-xl font-bold ${cs.text}`}>{s.totalTasks}</p>
+                  <p className={`text-[10px] uppercase tracking-[0.1em] ${cs.textMuted}`}>Total</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-amber-400">{s.openTasks}</p>
+                  <p className={`text-[10px] uppercase tracking-[0.1em] ${cs.textMuted}`}>Open</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-green-500">{s.doneTasks}</p>
+                  <p className={`text-[10px] uppercase tracking-[0.1em] ${cs.textMuted}`}>Done</p>
+                </div>
+              </div>
+              {s.totalTasks > 0 && (
+                <div className={`mt-4 h-1.5 w-full rounded-full ${cs.progressBg}`}>
+                  <div
+                    className="h-1.5 rounded-full bg-green-500"
+                    style={{ width: `${(s.doneTasks / s.totalTasks) * 100}%` }}
+                  />
+                </div>
+              )}
+              <p className={`mt-3 text-right text-[10px] ${cs.textMuted}`}>View tasks →</p>
+            </Link>
+          ))
+        )}
+      </div>
     </div>
   )
 }

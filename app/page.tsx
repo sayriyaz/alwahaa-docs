@@ -149,8 +149,8 @@ export default async function Home() {
 
   // ── Staff workload (open tasks only) ──
   const openTasks = tasks.filter((t) => (t.status ?? 'Pending') !== 'Done')
+  const allOpenTaskCount = openTasks.length
   const todayDate = getTodayDateValue()
-  const todayOpenTaskCount = openTasks.filter((t) => (t.created_at ?? '').slice(0, 10) === todayDate).length
   const workloadMap = new Map<string, number>()
   for (const t of openTasks) {
     const name = t.assigned_to?.trim() || 'Unassigned'
@@ -168,26 +168,32 @@ export default async function Home() {
     }))
 
   // ── Staff details (all tasks per person) ──
-  const staffMap = new Map<string, { openTasks: number; doneTasks: number; depts: Set<string> }>()
-  for (const t of tasks) {
-    const name = t.assigned_to?.trim() || 'Unassigned'
-    if (!staffMap.has(name)) staffMap.set(name, { openTasks: 0, doneTasks: 0, depts: new Set() })
-    const entry = staffMap.get(name)!
-    if ((t.status ?? 'Pending') === 'Done') entry.doneTasks++
-    else entry.openTasks++
-    if (t.dept?.trim()) entry.depts.add(t.dept.trim())
+  function buildStaffDetails(taskList: InvoiceTaskRecord[]) {
+    const map = new Map<string, { openTasks: number; doneTasks: number; depts: Set<string> }>()
+    for (const t of taskList) {
+      const name = t.assigned_to?.trim() || 'Unassigned'
+      if (!map.has(name)) map.set(name, { openTasks: 0, doneTasks: 0, depts: new Set() })
+      const entry = map.get(name)!
+      if ((t.status ?? 'Pending') === 'Done') entry.doneTasks++
+      else entry.openTasks++
+      if (t.dept?.trim()) entry.depts.add(t.dept.trim())
+    }
+    return [...map.entries()]
+      .sort((a, b) => b[1].openTasks + b[1].doneTasks - (a[1].openTasks + a[1].doneTasks))
+      .map(([name, data], i) => ({
+        name,
+        initials: mkInitials(name),
+        openTasks: data.openTasks,
+        doneTasks: data.doneTasks,
+        totalTasks: data.openTasks + data.doneTasks,
+        depts: [...data.depts],
+        color: STAFF_COLORS[i % STAFF_COLORS.length],
+      }))
   }
-  const staffDetails = [...staffMap.entries()]
-    .sort((a, b) => b[1].openTasks + b[1].doneTasks - (a[1].openTasks + a[1].doneTasks))
-    .map(([name, data], i) => ({
-      name,
-      initials: mkInitials(name),
-      openTasks: data.openTasks,
-      doneTasks: data.doneTasks,
-      totalTasks: data.openTasks + data.doneTasks,
-      depts: [...data.depts],
-      color: STAFF_COLORS[i % STAFF_COLORS.length],
-    }))
+
+  const staffDetails = buildStaffDetails(tasks)
+  const staffDetailsThisMonth = buildStaffDetails(tasks.filter((t) => (t.created_at ?? '').slice(0, 7) === currentMonthKey))
+  const staffDetailsThisWeek = buildStaffDetails(tasks.filter((t) => (t.created_at ?? '').slice(0, 10) >= oneWeekAgoStr))
 
   // ── Recent applications ──
   const recentApplications = invoices.slice(0, 5).map((i) => ({
@@ -276,7 +282,9 @@ export default async function Home() {
     totalBilled,
     totalCollected,
     staffDetails,
-    todayOpenTaskCount,
+    staffDetailsThisMonth,
+    staffDetailsThisWeek,
+    allOpenTaskCount,
   }
 
   return <DashboardClient data={dashData} />
