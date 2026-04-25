@@ -1,39 +1,7 @@
-import { getDailyWorks, normalizeDailyWorksDate } from '@/lib/daily-works'
-import { requireAuthenticatedAppUser } from '@/lib/auth'
-import DailyWorksPageClient from './daily-works-page-client'
+import { redirect } from 'next/navigation'
+import { normalizeDailyWorksDate } from '@/lib/daily-works'
 
-export const dynamic = 'force-dynamic'
-
-type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>
-
-function getSearchParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value
-}
-
-export default async function DailyWorksPage({
-  searchParams,
-}: {
-  searchParams: SearchParams
-}) {
-  const { appUser, db } = await requireAuthenticatedAppUser()
-  const resolvedSearchParams = await searchParams
-  const selectedDate = normalizeDailyWorksDate(getSearchParam(resolvedSearchParams.date) ?? null)
-  const selectedAssignee = getSearchParam(resolvedSearchParams.assignee)?.trim() ?? ''
-  const selectedDepartment = getSearchParam(resolvedSearchParams.dept)?.trim() ?? ''
-  const selectedStatus = getSearchParam(resolvedSearchParams.status)?.trim() === 'open' ? 'open' : ''
-  const result = await getDailyWorks(selectedDate, db)
-  const currentUserLabel = appUser.full_name?.trim() || appUser.email
-  const reviewedByLabel = appUser.role === 'admin' ? currentUserLabel : 'Pending review'
-
-  return (
-    <DailyWorksPageClient
-      initialDate={result.date}
-      initialItems={result.data}
-      initialAssigneeFilter={selectedAssignee}
-      initialDepartmentFilter={selectedDepartment}
-      initialStatusFilter={selectedStatus}
-      preparedByLabel={currentUserLabel}
-      reviewedByLabel={reviewedByLabel}
-    />
-  )
+export default function DailyWorksIndexPage() {
+  const today = normalizeDailyWorksDate(null)
+  redirect(`/daily-works/${today}`)
 }

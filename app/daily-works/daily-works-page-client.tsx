@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { startTransition, useState } from 'react'
 import { useAppTheme } from '@/components/app-theme-provider'
 import type { DailyWorkItem } from '@/lib/daily-works'
@@ -203,6 +204,7 @@ export default function DailyWorksPageClient({
   reviewedByLabel: string
 }) {
   const { isDark } = useAppTheme()
+  const router = useRouter()
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [items, setItems] = useState(initialItems)
   const [assigneeFilter, setAssigneeFilter] = useState(initialAssigneeFilter)
@@ -231,6 +233,7 @@ export default function DailyWorksPageClient({
     setSelectedDate(dateValue)
     setLoading(true)
     setPageError('')
+    router.replace(`/daily-works/${dateValue}`, { scroll: false })
 
     try {
       const response = await fetch(`/api/daily-works?date=${encodeURIComponent(dateValue)}`, {

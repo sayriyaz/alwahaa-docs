@@ -230,6 +230,23 @@ export default async function Home() {
     .reduce((s, i) => s + (i.total_amount ?? 0), 0)
   const totalCollected = receipts.reduce((s, r) => s + (r.amount ?? 0), 0)
 
+  // ── Client-wise outstanding ──
+  const clientOutstandingMap = new Map<string, { clientName: string; billed: number; collected: number }>()
+  for (const inv of invoices) {
+    if (inv.status === 'Cancelled') continue
+    const clientName = inv.client_id ? (clientNames.get(inv.client_id) ?? 'Unknown') : 'Unknown'
+    const key = inv.client_id ?? 'unknown'
+    if (!clientOutstandingMap.has(key)) clientOutstandingMap.set(key, { clientName, billed: 0, collected: 0 })
+    const entry = clientOutstandingMap.get(key)!
+    entry.billed += inv.total_amount ?? 0
+    entry.collected += receiptTotals.get(inv.id) ?? 0
+  }
+  const clientOutstanding = [...clientOutstandingMap.entries()]
+    .map(([clientId, c]) => ({ clientId, ...c, outstanding: Math.max(c.billed - c.collected, 0) }))
+    .filter((c) => c.outstanding > 0)
+    .sort((a, b) => b.outstanding - a.outstanding)
+    .slice(0, 20)
+
   // ── Receipts by payment mode ──
   const modeMap = new Map<string, { count: number; total: number }>()
   for (const r of receipts) {
@@ -281,6 +298,7 @@ export default async function Home() {
     receiptsByMode,
     totalBilled,
     totalCollected,
+    clientOutstanding,
     staffDetails,
     staffDetailsThisMonth,
     staffDetailsThisWeek,

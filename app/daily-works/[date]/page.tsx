@@ -1,10 +1,42 @@
-import { redirect } from 'next/navigation'
+import { getDailyWorks, normalizeDailyWorksDate } from '@/lib/daily-works'
+import { requireAuthenticatedAppUser } from '@/lib/auth'
+import DailyWorksPageClient from '../daily-works-page-client'
+
+export const dynamic = 'force-dynamic'
+
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>
+
+function getSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
 
 export default async function DailyWorksByDatePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ date: string }>
+  searchParams: SearchParams
 }) {
+  const { appUser, db } = await requireAuthenticatedAppUser()
   const { date } = await params
-  redirect(`/daily-works?date=${encodeURIComponent(date)}`)
+  const resolvedSearchParams = await searchParams
+  const selectedDate = normalizeDailyWorksDate(date ?? null)
+  const selectedAssignee = getSearchParam(resolvedSearchParams.assignee)?.trim() ?? ''
+  const selectedDepartment = getSearchParam(resolvedSearchParams.dept)?.trim() ?? ''
+  const selectedStatus = getSearchParam(resolvedSearchParams.status)?.trim() === 'open' ? 'open' : ''
+  const result = await getDailyWorks(selectedDate, db)
+  const currentUserLabel = appUser.full_name?.trim() || appUser.email
+  const reviewedByLabel = appUser.role === 'admin' ? currentUserLabel : 'Pending review'
+
+  return (
+    <DailyWorksPageClient
+      initialDate={result.date}
+      initialItems={result.data}
+      initialAssigneeFilter={selectedAssignee}
+      initialDepartmentFilter={selectedDepartment}
+      initialStatusFilter={selectedStatus}
+      preparedByLabel={currentUserLabel}
+      reviewedByLabel={reviewedByLabel}
+    />
+  )
 }

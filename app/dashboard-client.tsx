@@ -28,6 +28,7 @@ export type DashboardData = {
   receiptsByMode: Array<{ mode: string; count: number; total: number }>
   totalBilled: number
   totalCollected: number
+  clientOutstanding: Array<{ clientId: string; clientName: string; billed: number; collected: number; outstanding: number }>
   staffDetails: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
   staffDetailsThisMonth: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
   staffDetailsThisWeek: Array<{ name: string; initials: string; openTasks: number; doneTasks: number; totalTasks: number; depts: string[]; color: string }>
@@ -651,7 +652,7 @@ function ApplicationsTab({ d, isDark, cs }: { d: DashboardData; isDark: boolean;
 
 // ─── Finance Tab ──────────────────────────────────────────────────────────────
 
-function FinanceTab({ d, cs }: { d: DashboardData; cs: CS }) {
+function FinanceTab({ d, cs, isDark }: { d: DashboardData; cs: CS; isDark: boolean }) {
   const collectionRate =
     d.totalBilled > 0 ? (d.totalCollected / d.totalBilled) * 100 : 0
   const outstanding = Math.max(d.totalBilled - d.totalCollected, 0)
@@ -725,6 +726,66 @@ function FinanceTab({ d, cs }: { d: DashboardData; cs: CS }) {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Client-wise Outstanding */}
+      <div className={`rounded-xl border ${cs.cardBorder} ${cs.cardBg} p-5`}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${cs.sectionTitle}`}>
+            Client-wise Outstanding
+          </h2>
+          <span className={`text-xs ${cs.textMuted}`}>{d.clientOutstanding.length} clients with balance</span>
+        </div>
+        {d.clientOutstanding.length === 0 ? (
+          <p className={`text-xs ${cs.textMuted}`}>All clients are settled. 🎉</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={`border-b text-left text-[0.62rem] uppercase tracking-[0.12em] ${cs.textMuted}`}>
+                  <th className="pb-2 pr-4 font-medium">#</th>
+                  <th className="pb-2 pr-4 font-medium">Client</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Billed</th>
+                  <th className="pb-2 pr-4 text-right font-medium">Collected</th>
+                  <th className="pb-2 text-right font-medium">Outstanding</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${cs.cardBorder}`}>
+                {d.clientOutstanding.map((c, i) => {
+                  const pct = c.billed > 0 ? (c.collected / c.billed) * 100 : 0
+                  return (
+                    <tr key={c.clientName} className={`group cursor-pointer transition ${isDark ? 'hover:bg-white/5' : 'hover:bg-slate-50'}`}>
+                      <td className={`py-2.5 pr-4 text-xs ${cs.textMuted}`}>{i + 1}</td>
+                      <td className={`py-2.5 pr-4 font-medium ${cs.text}`}>
+                        <Link href={`/invoices?query=${encodeURIComponent(c.clientName)}`} className="block">
+                          <div>{c.clientName}</div>
+                          <div className={`mt-1 h-1 w-24 rounded-full overflow-hidden ${cs.progressBg}`}>
+                            <div className="h-1 rounded-full bg-teal-500" style={{ width: `${pct}%` }} />
+                          </div>
+                        </Link>
+                      </td>
+                      <td className={`py-2.5 pr-4 text-right font-mono text-xs ${cs.textSub}`}>
+                        {c.billed.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className={`py-2.5 pr-4 text-right font-mono text-xs text-green-500`}>
+                        {c.collected.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <Link
+                          href={`/invoices?query=${encodeURIComponent(c.clientName)}&filter=pending-collections`}
+                          className="font-mono text-xs font-semibold text-red-500 hover:underline"
+                          title="View unpaid invoices"
+                        >
+                          {c.outstanding.toLocaleString('en-AE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -876,7 +937,7 @@ export default function DashboardClient({ data }: { data: DashboardData }) {
 
         {tab === 'Overview' && <OverviewTab d={data} isDark={isDark} cs={cs} />}
         {tab === 'Applications' && <ApplicationsTab d={data} isDark={isDark} cs={cs} />}
-        {tab === 'Finance' && <FinanceTab d={data} cs={cs} />}
+        {tab === 'Finance' && <FinanceTab d={data} cs={cs} isDark={isDark} />}
         {tab === 'Staff' && <StaffTab d={data} cs={cs} />}
       </div>
     </div>
